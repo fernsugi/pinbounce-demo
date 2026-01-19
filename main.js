@@ -50,12 +50,12 @@ const CONFIG = {
 
     // Block settings
     BLOCK_DEFAULT_HP: 1,
-    BLOCK_SIZE: 36,
+    BLOCK_SIZE: 30,
 
     // Level layout
-    BLOCK_COUNT: 50,
-    BLOCK_PADDING: 6,
-    BLOCK_MARGIN: 40,
+    BLOCK_COUNT: 80,
+    BLOCK_PADDING: 5,
+    BLOCK_MARGIN: 30,
 
     // Win condition
     WIN_REQUIRES_ALL_BLOCKS: false,
