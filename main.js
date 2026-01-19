@@ -21,10 +21,10 @@ const CONFIG = {
     BALL_RADIUS_BIG: 16,
 
     // Ball wall lives by type
-    WALL_LIVES_NORMAL: 6,
-    WALL_LIVES_MEDIUM: 7,
-    WALL_LIVES_BIG: 9,
-    WALL_LIVES_RAINBALL: 6,
+    WALL_LIVES_NORMAL: 12,
+    WALL_LIVES_MEDIUM: 14,
+    WALL_LIVES_BIG: 18,
+    WALL_LIVES_RAINBALL: 12,
 
     // Ball movement speed
     BALL_SPEED: 6,
@@ -873,35 +873,33 @@ class SlotMachine {
 
     resolveResult() {
         const reels = this.gameState.slotReels;
-        const counts = { red: 0, yellow: 0, blue: 0 };
-        reels.forEach(r => counts[r]++);
-
-        // Ball color is ALWAYS the first reel color (except rainball)
         const firstReelColor = reels[0];
-        let ballColor, ballType, resultText;
 
-        const tripleColor = Object.keys(counts).find(c => counts[c] === 3);
-        if (tripleColor) {
-            ballColor = firstReelColor;  // Use first reel color
-            ballType = 'big';
-            resultText = 'BIG BALL!';
-            this.gameState.debugStats.triples++;
-        } else if (counts.red === 1 && counts.yellow === 1 && counts.blue === 1) {
-            ballColor = 'rainbow';  // Rainbow is special - matches all
-            ballType = 'rainball';
+        // Count how many times the first color appears
+        const firstColorCount = reels.filter(r => r === firstReelColor).length;
+
+        // Check for rainbow (all different colors)
+        const isRainbow = new Set(reels).size === 3;
+
+        let ballColor, ballCount, resultText;
+
+        if (isRainbow) {
+            ballColor = 'rainbow';
+            ballCount = 1;
             resultText = 'RAINBALL!';
             this.gameState.debugStats.rainbows++;
         } else {
-            const pairColor = Object.keys(counts).find(c => counts[c] === 2);
-            if (pairColor) {
-                ballColor = firstReelColor;  // Use first reel color
-                ballType = 'medium';
-                resultText = 'MEDIUM BALL';
+            ballColor = firstReelColor;
+            ballCount = firstColorCount;
+
+            if (ballCount === 3) {
+                resultText = 'TRIPLE! x3 BALLS!';
+                this.gameState.debugStats.triples++;
+            } else if (ballCount === 2) {
+                resultText = 'DOUBLE! x2 BALLS!';
                 this.gameState.debugStats.pairs++;
             } else {
-                ballColor = firstReelColor;
-                ballType = 'normal';
-                resultText = 'NORMAL BALL';
+                resultText = 'x1 BALL';
                 this.gameState.debugStats.normals++;
             }
         }
@@ -912,7 +910,7 @@ class SlotMachine {
         setTimeout(() => {
             document.getElementById('slot-overlay').classList.add('hidden');
             this.gameState.slotState = 'idle';
-            if (this.onResult) this.onResult(ballColor, ballType);
+            if (this.onResult) this.onResult(ballColor, ballCount);
         }, 300);
     }
 
@@ -1360,7 +1358,7 @@ class Game {
 
         this.renderer = new Renderer(this.canvas, this.gameState, this.particles, this.cameraShake);
         this.slotMachine = new SlotMachine(this.gameState, this.audio);
-        this.slotMachine.onResult = (color, type) => this.spawnBall(color, type);
+        this.slotMachine.onResult = (color, count) => this.spawnBalls(color, count);
 
         // UI elements
         this.spacebarHint = document.getElementById('spacebar-hint');
@@ -1489,36 +1487,49 @@ class Game {
         this.updateUI();
     }
 
-    spawnBall(color, type) {
+    spawnBalls(color, count) {
         const cx = this.canvas.width / 2;
         const cy = this.canvas.height / 2;
         const angle = this.gameState.arrowAngle;
+        const isRainbow = color === 'rainbow';
 
-        const ball = new Ball(cx, cy, color, type, angle);
-        this.gameState.balls.push(ball);
-        this.gameState.isRunning = true;
+        // Delay between ball spawns (ms)
+        const spawnDelay = 150;
 
-        // Spawn effects based on ball type
-        if (type === 'big') {
-            this.cameraShake.trigger(JUICE.SHAKE_BIG_SPAWN.intensity, JUICE.SHAKE_BIG_SPAWN.duration);
-            this.hitStop.trigger(JUICE.HITSTOP_BIG_SPAWN);
-            this.particles.emit(cx, cy, CONFIG.COLORS[color.toUpperCase()], JUICE.PARTICLE_SPAWN_BURST);
-            this.audio.ballSpawnBig();
-            this.haptics.bigSpawn();
-        } else if (type === 'rainball') {
-            this.cameraShake.trigger(JUICE.SHAKE_RAINBALL_SPAWN.intensity, JUICE.SHAKE_RAINBALL_SPAWN.duration);
-            this.particles.emitRainbow(cx, cy, JUICE.PARTICLE_SPAWN_BURST);
-            this.audio.ballSpawnRainball();
-            this.haptics.rainball();
-        } else if (type === 'medium') {
-            this.cameraShake.trigger(JUICE.SHAKE_MEDIUM_SPAWN.intensity, JUICE.SHAKE_MEDIUM_SPAWN.duration);
-            this.particles.emit(cx, cy, CONFIG.COLORS[color.toUpperCase()], JUICE.PARTICLE_SPAWN_BURST / 2);
-            this.audio.ballSpawnMedium();
-        } else {
-            this.audio.ballSpawnNormal();
+        for (let i = 0; i < count; i++) {
+            setTimeout(() => {
+                // Slight angle variation for multiple balls
+                const angleOffset = count > 1 ? (i - (count - 1) / 2) * 0.15 : 0;
+                const ballAngle = angle + angleOffset;
+
+                const ballType = isRainbow ? 'rainball' : 'normal';
+                const ball = new Ball(cx, cy, color, ballType, ballAngle);
+                this.gameState.balls.push(ball);
+                this.gameState.isRunning = true;
+
+                // Spawn effects
+                if (isRainbow) {
+                    this.cameraShake.trigger(JUICE.SHAKE_RAINBALL_SPAWN.intensity, JUICE.SHAKE_RAINBALL_SPAWN.duration);
+                    this.particles.emitRainbow(cx, cy, JUICE.PARTICLE_SPAWN_BURST);
+                    this.audio.ballSpawnRainball();
+                    this.haptics.rainball();
+                } else if (count >= 3) {
+                    this.cameraShake.trigger(JUICE.SHAKE_BIG_SPAWN.intensity, JUICE.SHAKE_BIG_SPAWN.duration);
+                    this.hitStop.trigger(JUICE.HITSTOP_BIG_SPAWN);
+                    this.particles.emit(cx, cy, CONFIG.COLORS[color.toUpperCase()], JUICE.PARTICLE_SPAWN_BURST);
+                    this.audio.ballSpawnBig();
+                    this.haptics.bigSpawn();
+                } else if (count === 2) {
+                    this.cameraShake.trigger(JUICE.SHAKE_MEDIUM_SPAWN.intensity, JUICE.SHAKE_MEDIUM_SPAWN.duration);
+                    this.particles.emit(cx, cy, CONFIG.COLORS[color.toUpperCase()], JUICE.PARTICLE_SPAWN_BURST / 2);
+                    this.audio.ballSpawnMedium();
+                } else {
+                    this.audio.ballSpawnNormal();
+                }
+
+                this.updateUI();
+            }, i * spawnDelay);
         }
-
-        this.updateUI();
     }
 
     processBallBlockCollisions() {
