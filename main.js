@@ -724,7 +724,7 @@ class Ball {
             this.wallLives--;
             this.lastWallHitTime = now;
 
-            // Blue special: lose piercing and slow down after first wall hit
+            // Blue special: lose piercing, slow down, and shrink after first wall hit
             if (this.bluePiercing) {
                 this.bluePiercing = false;
                 // Slow down to normal speed
@@ -732,6 +732,8 @@ class Ball {
                 const factor = CONFIG.BALL_SPEED / currentSpeed;
                 this.vx *= factor;
                 this.vy *= factor;
+                // Shrink back to normal size
+                this.baseRadius = this.getRadiusByType(this.type);
             }
 
             if (audioManager) {
