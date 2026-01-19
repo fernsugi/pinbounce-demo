@@ -629,7 +629,10 @@ class Ball {
         // Red special: 2x speed until first wall hit, breaks anything
         this.isRed = color === 'red';
         this.redPiercing = this.isRed;  // Loses piercing after first wall hit
-        const speedMultiplier = this.isRed ? 2 : 1;
+
+        // Rainball: always 2x speed
+        const isRainbow = color === 'rainbow';
+        const speedMultiplier = (this.isRed || isRainbow) ? 2 : 1;
 
         const speed = CONFIG.BALL_SPEED * speedMultiplier;
         this.vx = Math.cos(angle) * speed;
