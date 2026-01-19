@@ -841,6 +841,9 @@ class SlotMachine {
         document.getElementById('slot-result').textContent = '';
         document.getElementById('slot-hint').textContent = 'Press SPACE to stop';
 
+        // Randomize starting color each spin
+        this.reel1Index = Math.floor(Math.random() * 3);
+
         // First reel: slow predictable cycle (red -> yellow -> blue -> red...)
         this.reel1Interval = setInterval(() => {
             if (this.gameState.slotStoppedCount === 0) {
@@ -859,7 +862,7 @@ class SlotMachine {
             if (this.audio) this.audio.slotTick();
         }, CONFIG.SLOT_REEL23_INTERVAL);
 
-        // Initialize first reel with current index
+        // Initialize first reel with random starting color
         this.gameState.slotReels[0] = this.colors[this.reel1Index];
         this.updateReelDisplay();
     }
