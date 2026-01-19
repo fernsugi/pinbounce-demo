@@ -124,6 +124,16 @@ const JUICE = {
     COMBO_DECAY_TIME: 2000,         // ms before combo resets
     COMBO_MILESTONES: [5, 10, 15, 20, 30],
 
+    // === SCREEN FLASH ===
+    FLASH_ENABLED: true,
+    FLASH_COMBO_DURATION: 150,      // ms
+    FLASH_COMBO_ALPHA: 0.4,         // opacity
+
+    // === SLOW MOTION ===
+    SLOWMO_ENABLED: true,
+    SLOWMO_BLOCKS_THRESHOLD: 5,     // Trigger when this many blocks remain
+    SLOWMO_FACTOR: 0.4,             // Game speed multiplier (0.4 = 40% speed)
+
     // === PERFORMANCE MODE ===
     PERFORMANCE_MODE: false         // Reduces particles & trails
 };
@@ -1028,6 +1038,21 @@ class Renderer {
         this.particles = particles;
         this.cameraShake = cameraShake;
         this.rainbowHue = 0;
+        this.game = null;  // Set by Game class after construction
+    }
+
+    setGame(game) {
+        this.game = game;
+    }
+
+    // Helper to convert ball color names to HSL hues for vibrant trails
+    getHueFromColor(color) {
+        switch(color) {
+            case 'red': return 5;      // Vibrant red
+            case 'yellow': return 45;   // Warm golden yellow
+            case 'blue': return 210;    // Bright blue
+            default: return 0;
+        }
     }
 
     clear() {
@@ -1114,24 +1139,46 @@ class Renderer {
     }
 
     drawBall(ball) {
-        // Draw trail
+        // Draw trail - VIBRANT version!
         if (JUICE.TRAIL_ENABLED && !JUICE.PERFORMANCE_MODE && ball.trail.length > 0) {
+            // First pass: outer glow for extra vibrancy
             for (let i = 0; i < ball.trail.length; i++) {
                 const t = ball.trail[i];
-                const alpha = (1 - i / ball.trail.length) * 0.4;
-                const radius = ball.radius * (1 - i / ball.trail.length * 0.6);
+                const progress = i / ball.trail.length;
+                const glowAlpha = (1 - progress) * 0.25;
+                const glowRadius = ball.radius * (1.8 - progress * 0.8);
 
                 if (ball.color === 'rainbow') {
-                    this.ctx.fillStyle = `hsla(${(this.rainbowHue + i * 25) % 360}, 80%, 60%, ${alpha})`;
+                    this.ctx.fillStyle = `hsla(${(this.rainbowHue + i * 30) % 360}, 100%, 60%, ${glowAlpha})`;
                 } else {
-                    this.ctx.fillStyle = ball.getDisplayColor();
-                    this.ctx.globalAlpha = alpha;
+                    // Convert hex to more saturated HSL
+                    const hue = this.getHueFromColor(ball.color);
+                    this.ctx.fillStyle = `hsla(${hue}, 100%, 55%, ${glowAlpha})`;
+                }
+
+                this.ctx.beginPath();
+                this.ctx.arc(t.x, t.y, glowRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            // Second pass: core trail
+            for (let i = 0; i < ball.trail.length; i++) {
+                const t = ball.trail[i];
+                const progress = i / ball.trail.length;
+                const alpha = (1 - progress) * 0.7;  // Much brighter than before (was 0.4)
+                const radius = ball.radius * (1 - progress * 0.5);
+
+                if (ball.color === 'rainbow') {
+                    this.ctx.fillStyle = `hsla(${(this.rainbowHue + i * 30) % 360}, 100%, 65%, ${alpha})`;
+                } else {
+                    // Use vibrant saturated colors
+                    const hue = this.getHueFromColor(ball.color);
+                    this.ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${alpha})`;
                 }
 
                 this.ctx.beginPath();
                 this.ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
                 this.ctx.fill();
-                this.ctx.globalAlpha = 1;
             }
         }
 
@@ -1311,6 +1358,28 @@ class Renderer {
         }
 
         this.ctx.restore();
+
+        // Draw screen flash overlay (after restore so it's not affected by shake)
+        if (this.game && this.game.flashAlpha > 0) {
+            this.ctx.fillStyle = this.game.flashColor;
+            this.ctx.globalAlpha = this.game.flashAlpha;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.globalAlpha = 1;
+        }
+
+        // Draw slow-motion visual effect
+        if (this.game && this.game.slowmoActive) {
+            // Subtle blue tint + vignette for slowmo
+            const gradient = this.ctx.createRadialGradient(
+                this.canvas.width / 2, this.canvas.height / 2, 0,
+                this.canvas.width / 2, this.canvas.height / 2, this.canvas.width * 0.7
+            );
+            gradient.addColorStop(0, 'rgba(0, 100, 200, 0)');
+            gradient.addColorStop(0.7, 'rgba(0, 50, 150, 0.1)');
+            gradient.addColorStop(1, 'rgba(0, 30, 100, 0.25)');
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        }
     }
 }
 
@@ -1386,8 +1455,18 @@ class Game {
         this.combo = new ComboSystem();
 
         this.renderer = new Renderer(this.canvas, this.gameState, this.particles, this.cameraShake);
+        this.renderer.setGame(this);  // Give renderer access to game state for flash/slowmo
         this.slotMachine = new SlotMachine(this.gameState, this.audio);
         this.slotMachine.onResult = (color, count) => this.spawnBalls(color, count);
+
+        // Screen flash state
+        this.flashAlpha = 0;
+        this.flashColor = '#ffd700';
+        this.flashDuration = 0;
+        this.flashElapsed = 0;
+
+        // Slow-motion state
+        this.slowmoActive = false;
 
         // UI elements
         this.spacebarHint = document.getElementById('spacebar-hint');
@@ -1665,13 +1744,44 @@ class Game {
         void this.comboText.offsetWidth;
         this.comboText.style.animation = '';
 
+        // Trigger screen flash on combo milestone
+        if (JUICE.FLASH_ENABLED) {
+            // Color based on combo size
+            if (count >= 20) {
+                this.triggerFlash('#ff00ff', JUICE.FLASH_COMBO_ALPHA + 0.2);  // Magenta for huge combos
+            } else if (count >= 10) {
+                this.triggerFlash('#00ffff', JUICE.FLASH_COMBO_ALPHA + 0.1);  // Cyan for big combos
+            } else {
+                this.triggerFlash('#ffd700', JUICE.FLASH_COMBO_ALPHA);  // Gold for normal combos
+            }
+        }
+
         clearTimeout(this.comboTimeout);
         this.comboTimeout = setTimeout(() => {
             this.comboDisplay.classList.add('hidden');
         }, 1000);
     }
 
+    triggerFlash(color, alpha) {
+        this.flashColor = color;
+        this.flashAlpha = alpha;
+        this.flashDuration = JUICE.FLASH_COMBO_DURATION;
+        this.flashElapsed = 0;
+    }
+
     update(dt) {
+        // Update screen flash
+        if (this.flashAlpha > 0) {
+            this.flashElapsed += dt;
+            const progress = this.flashElapsed / this.flashDuration;
+            if (progress >= 1) {
+                this.flashAlpha = 0;
+            } else {
+                // Quick flash in, slow fade out
+                this.flashAlpha = this.flashAlpha * (1 - progress * progress);
+            }
+        }
+
         // Update camera shake
         this.cameraShake.update(dt);
 
@@ -1690,7 +1800,19 @@ class Game {
             return;
         }
 
-        // Rotate arrow
+        // Check for slow-motion trigger
+        const remaining = CONFIG.WIN_REQUIRES_ALL_BLOCKS
+            ? this.gameState.remainingBlocks
+            : this.gameState.remainingColoredBlocks;
+
+        if (JUICE.SLOWMO_ENABLED && remaining > 0 && remaining <= JUICE.SLOWMO_BLOCKS_THRESHOLD) {
+            this.slowmoActive = true;
+            dt *= JUICE.SLOWMO_FACTOR;  // Slow down time!
+        } else {
+            this.slowmoActive = false;
+        }
+
+        // Rotate arrow (not affected by slowmo for responsiveness)
         this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
 
         // Update balls
