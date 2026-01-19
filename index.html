@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Pin Bounce!</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Header UI -->
+        <div id="header">
+            <div class="stat">
+                <span class="label">Balls</span>
+                <span id="ball-count">0 / 6</span>
+            </div>
+            <div id="title">PIN BOUNCE!</div>
+            <div class="stat">
+                <span class="label">Blocks</span>
+                <span id="block-count">0</span>
+            </div>
+        </div>
+
+        <!-- Main Canvas -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Combo Display (floating) -->
+        <div id="combo-display" class="hidden">
+            <span id="combo-text">COMBO x5!</span>
+        </div>
+
+        <!-- Controls -->
+        <div id="controls">
+            <div id="spacebar-hint">
+                <span class="key">SPACE</span>
+                <span id="action-label">to SPIN</span>
+            </div>
+            <button id="settings-btn" class="btn-icon" title="Settings">⚙</button>
+            <button id="restart-btn" class="btn-secondary">↻</button>
+        </div>
+
+        <!-- Slot Machine Overlay -->
+        <div id="slot-overlay" class="hidden">
+            <div id="slot-container">
+                <div id="slot-title">SPIN!</div>
+                <div id="slot-display">
+                    <div class="reel" id="reel-0">?</div>
+                    <div class="reel" id="reel-1">?</div>
+                    <div class="reel" id="reel-2">?</div>
+                </div>
+                <div id="slot-result"></div>
+                <!-- Arrow direction indicator -->
+                <div id="arrow-indicator">
+                    <div id="arrow-indicator-icon">➤</div>
+                    <div id="arrow-indicator-label">Launch Direction</div>
+                </div>
+                <div id="slot-hint">Press SPACE to stop</div>
+            </div>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="overlay" class="hidden">
+            <div id="overlay-content">
+                <h2 id="overlay-title">LEVEL CLEAR!</h2>
+                <p id="overlay-message">Great job!</p>
+                <button id="overlay-btn" class="btn-primary">PLAY AGAIN</button>
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div id="settings-panel" class="hidden">
+            <div id="settings-content">
+                <h3>Settings</h3>
+                <label class="toggle-row">
+                    <span>Sound</span>
+                    <input type="checkbox" id="sound-toggle" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+                <label class="toggle-row">
+                    <span>Haptics</span>
+                    <input type="checkbox" id="haptics-toggle" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+                <label class="toggle-row">
+                    <span>Performance Mode</span>
+                    <input type="checkbox" id="perf-toggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <button id="settings-close" class="btn-secondary">Close</button>
+            </div>
+        </div>
+
+        <!-- Debug Panel (toggle with D key) -->
+        <div id="debug-panel" class="hidden">
+            <h4>Debug Stats</h4>
+            <div id="debug-stats"></div>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
