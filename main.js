@@ -21,10 +21,10 @@ const CONFIG = {
     BALL_RADIUS_BIG: 16,
 
     // Ball wall lives by type
-    WALL_LIVES_NORMAL: 12,
-    WALL_LIVES_MEDIUM: 14,
-    WALL_LIVES_BIG: 18,
-    WALL_LIVES_RAINBALL: 12,
+    WALL_LIVES_NORMAL: 6,
+    WALL_LIVES_MEDIUM: 7,
+    WALL_LIVES_BIG: 9,
+    WALL_LIVES_RAINBALL: 6,
 
     // Ball movement speed
     BALL_SPEED: 6,
