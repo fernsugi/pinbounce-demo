@@ -1200,6 +1200,32 @@ class Renderer {
             this.ctx.globalAlpha = 1;
         }
 
+        // Red AOE ready effect - pulsing explosion warning!
+        if (ball.redAOEReady) {
+            const pulse = Math.sin(Date.now() * 0.01) * 0.5 + 0.5;  // 0-1 pulsing
+            const pulseRadius = ball.radius + 8 + pulse * 12;
+
+            // Outer pulsing ring
+            this.ctx.strokeStyle = `rgba(255, 100, 50, ${0.4 + pulse * 0.4})`;
+            this.ctx.lineWidth = 2 + pulse * 2;
+            this.ctx.beginPath();
+            this.ctx.arc(ball.x, ball.y, pulseRadius, 0, Math.PI * 2);
+            this.ctx.stroke();
+
+            // Inner expanding glow
+            const gradient = this.ctx.createRadialGradient(
+                ball.x, ball.y, ball.radius,
+                ball.x, ball.y, pulseRadius + 5
+            );
+            gradient.addColorStop(0, `rgba(255, 150, 50, ${0.3 * pulse})`);
+            gradient.addColorStop(0.5, `rgba(255, 80, 30, ${0.2 * pulse})`);
+            gradient.addColorStop(1, 'rgba(255, 50, 20, 0)');
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.arc(ball.x, ball.y, pulseRadius + 5, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+
         // Main ball
         if (ball.color === 'rainbow') {
             const gradient = this.ctx.createRadialGradient(
