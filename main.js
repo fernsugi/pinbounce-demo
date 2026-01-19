@@ -607,9 +607,8 @@ class GameState {
     }
 
     canSpawnBall() {
-        return this.activeBallCount < CONFIG.ACTIVE_BALL_CAP &&
-               !this.isGameOver &&
-               this.slotState === 'idle';
+        // No ball cap - spawn unlimited!
+        return !this.isGameOver && this.slotState === 'idle';
     }
 }
 
@@ -627,9 +626,18 @@ class Ball {
         this.wallLives = this.getWallLivesByType(type);
         this.maxWallLives = this.wallLives;
 
-        const speed = CONFIG.BALL_SPEED;
+        // Red special: 2x speed until first wall hit, breaks anything
+        this.isRed = color === 'red';
+        this.redPiercing = this.isRed;  // Loses piercing after first wall hit
+        const speedMultiplier = this.isRed ? 2 : 1;
+
+        const speed = CONFIG.BALL_SPEED * speedMultiplier;
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
+
+        // Blue special: AOE on first block break
+        this.isBlue = color === 'blue';
+        this.blueAOEReady = this.isBlue;  // Can only use AOE once
 
         this.lastWallHitTime = 0;
         this.spawnTime = Date.now();
@@ -709,6 +717,17 @@ class Ball {
         if (hitWall && now - this.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
             this.wallLives--;
             this.lastWallHitTime = now;
+
+            // Red special: lose piercing and slow down after first wall hit
+            if (this.redPiercing) {
+                this.redPiercing = false;
+                // Slow down to normal speed
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const factor = CONFIG.BALL_SPEED / currentSpeed;
+                this.vx *= factor;
+                this.vy *= factor;
+            }
+
             if (audioManager) {
                 audioManager.wallHit(this.wallLives, this.maxWallLives);
             }
@@ -720,6 +739,8 @@ class Ball {
     canDamage(block) {
         if (this.color === 'rainbow') return true;
         if (block.color === 'neutral') return true;
+        // Red special: piercing mode breaks ANY block
+        if (this.redPiercing) return true;
         return this.color === block.color;
     }
 
@@ -1493,6 +1514,11 @@ class Game {
         const angle = this.gameState.arrowAngle;
         const isRainbow = color === 'rainbow';
 
+        // Yellow special: always 3x the balls!
+        if (color === 'yellow') {
+            count *= 3;
+        }
+
         // Delay between ball spawns (ms)
         const spawnDelay = 150;
 
@@ -1558,6 +1584,12 @@ class Game {
                             this.audio.blockBreak();
                             this.haptics.blockBreak();
 
+                            // Blue special: AOE explosion on first block break
+                            if (ball.blueAOEReady) {
+                                ball.blueAOEReady = false;
+                                this.triggerBlueAOE(block.centerX, block.centerY);
+                            }
+
                             // Combo
                             const milestone = this.combo.addBreak();
                             if (milestone > 0) {
@@ -1584,6 +1616,34 @@ class Game {
                         this.audio.wrongColorBounce();
                     }
                 }
+            }
+        }
+    }
+
+    // Blue AOE: destroy all blocks within radius
+    triggerBlueAOE(x, y) {
+        const aoeRadius = 80;  // Explosion radius in pixels
+
+        // Big shake and effects for AOE
+        this.cameraShake.trigger(15, 300);
+        this.hitStop.trigger(80);
+        this.particles.emitRainbow(x, y, 40);
+        this.audio.ballSpawnBig();  // Use big sound for explosion
+        this.haptics.bigSpawn();
+
+        // Find and destroy all blocks in radius
+        for (const block of this.gameState.blocks) {
+            if (block.hp <= 0) continue;
+
+            const dx = block.centerX - x;
+            const dy = block.centerY - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= aoeRadius) {
+                block.takeDamage();
+                this.particles.emit(block.centerX, block.centerY, CONFIG.COLORS.BLUE, JUICE.PARTICLE_BLOCK_BREAK);
+                this.audio.blockBreak();
+                this.combo.addBreak();
             }
         }
     }
@@ -1679,7 +1739,7 @@ class Game {
     }
 
     updateUI() {
-        this.ballCountEl.textContent = `${this.gameState.activeBallCount} / ${CONFIG.ACTIVE_BALL_CAP}`;
+        this.ballCountEl.textContent = `${this.gameState.activeBallCount}`;
 
         const remaining = CONFIG.WIN_REQUIRES_ALL_BLOCKS
             ? this.gameState.remainingBlocks
@@ -1688,7 +1748,7 @@ class Game {
 
         // Action label
         if (this.gameState.slotState === 'idle') {
-            this.actionLabel.textContent = this.gameState.canSpawnBall() ? 'to SPIN' : '(max balls)';
+            this.actionLabel.textContent = 'to SPIN';
             this.spacebarHint.classList.remove('active');
         } else if (this.gameState.slotState === 'spinning') {
             this.actionLabel.textContent = 'to STOP';
