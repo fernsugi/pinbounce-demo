@@ -1712,7 +1712,7 @@ class Game {
 
     // Red AOE: destroy all blocks within radius
     triggerRedAOE(x, y) {
-        const aoeRadius = 80;  // Explosion radius in pixels
+        const aoeRadius = 130;  // Explosion radius in pixels
 
         // Big shake and effects for AOE
         this.cameraShake.trigger(15, 300);
