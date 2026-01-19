@@ -50,10 +50,10 @@ const CONFIG = {
 
     // Block settings
     BLOCK_DEFAULT_HP: 1,
-    BLOCK_SIZE: 30,
+    BLOCK_SIZE: 26,
 
     // Level layout
-    BLOCK_COUNT: 80,
+    BLOCK_COUNT: 120,
     BLOCK_PADDING: 5,
     BLOCK_MARGIN: 30,
 
@@ -70,7 +70,7 @@ const CONFIG = {
     },
 
     // Block color weights
-    COLOR_WEIGHTS: { red: 3, yellow: 3, blue: 3, neutral: 1 }
+    COLOR_WEIGHTS: { red: 1, yellow: 1, blue: 1, neutral: 1 }
 };
 
 // ===========================================
