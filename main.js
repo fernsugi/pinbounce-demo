@@ -53,9 +53,9 @@ const CONFIG = {
     BLOCK_SIZE: 36,
 
     // Level layout
-    BLOCK_COUNT: 25,
-    BLOCK_PADDING: 8,
-    BLOCK_MARGIN: 50,
+    BLOCK_COUNT: 50,
+    BLOCK_PADDING: 6,
+    BLOCK_MARGIN: 40,
 
     // Win condition
     WIN_REQUIRES_ALL_BLOCKS: false,
