@@ -626,21 +626,24 @@ class Ball {
         this.wallLives = this.getWallLivesByType(type);
         this.maxWallLives = this.wallLives;
 
-        // Red special: 2x speed until first wall hit, breaks anything
-        this.isRed = color === 'red';
-        this.redPiercing = this.isRed;  // Loses piercing after first wall hit
+        // Blue special: 3x speed + 2x size + breaks anything until first wall hit
+        this.isBlue = color === 'blue';
+        this.bluePiercing = this.isBlue;  // Loses piercing after first wall hit
+        if (this.isBlue) {
+            this.baseRadius *= 2;  // Double size
+        }
 
         // Rainball: always 2x speed
         const isRainbow = color === 'rainbow';
-        const speedMultiplier = (this.isRed || isRainbow) ? 2 : 1;
+        const speedMultiplier = this.isBlue ? 3 : (isRainbow ? 2 : 1);
 
         const speed = CONFIG.BALL_SPEED * speedMultiplier;
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
 
-        // Blue special: AOE on first block break
-        this.isBlue = color === 'blue';
-        this.blueAOEReady = this.isBlue;  // Can only use AOE once
+        // Red special: AOE on first block break
+        this.isRed = color === 'red';
+        this.redAOEReady = this.isRed;  // Can only use AOE once
 
         this.lastWallHitTime = 0;
         this.spawnTime = Date.now();
@@ -721,9 +724,9 @@ class Ball {
             this.wallLives--;
             this.lastWallHitTime = now;
 
-            // Red special: lose piercing and slow down after first wall hit
-            if (this.redPiercing) {
-                this.redPiercing = false;
+            // Blue special: lose piercing and slow down after first wall hit
+            if (this.bluePiercing) {
+                this.bluePiercing = false;
                 // Slow down to normal speed
                 const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                 const factor = CONFIG.BALL_SPEED / currentSpeed;
@@ -742,8 +745,8 @@ class Ball {
     canDamage(block) {
         if (this.color === 'rainbow') return true;
         if (block.color === 'neutral') return true;
-        // Red special: piercing mode breaks ANY block
-        if (this.redPiercing) return true;
+        // Blue special: piercing mode breaks ANY block
+        if (this.bluePiercing) return true;
         return this.color === block.color;
     }
 
@@ -1587,10 +1590,10 @@ class Game {
                             this.audio.blockBreak();
                             this.haptics.blockBreak();
 
-                            // Blue special: AOE explosion on first block break
-                            if (ball.blueAOEReady) {
-                                ball.blueAOEReady = false;
-                                this.triggerBlueAOE(block.centerX, block.centerY);
+                            // Red special: AOE explosion on first block break
+                            if (ball.redAOEReady) {
+                                ball.redAOEReady = false;
+                                this.triggerRedAOE(block.centerX, block.centerY);
                             }
 
                             // Combo
@@ -1623,14 +1626,14 @@ class Game {
         }
     }
 
-    // Blue AOE: destroy all blocks within radius
-    triggerBlueAOE(x, y) {
+    // Red AOE: destroy all blocks within radius
+    triggerRedAOE(x, y) {
         const aoeRadius = 80;  // Explosion radius in pixels
 
         // Big shake and effects for AOE
         this.cameraShake.trigger(15, 300);
         this.hitStop.trigger(80);
-        this.particles.emitRainbow(x, y, 40);
+        this.particles.emit(x, y, CONFIG.COLORS.RED, 40);
         this.audio.ballSpawnBig();  // Use big sound for explosion
         this.haptics.bigSpawn();
 
@@ -1644,7 +1647,7 @@ class Game {
 
             if (distance <= aoeRadius) {
                 block.takeDamage();
-                this.particles.emit(block.centerX, block.centerY, CONFIG.COLORS.BLUE, JUICE.PARTICLE_BLOCK_BREAK);
+                this.particles.emit(block.centerX, block.centerY, CONFIG.COLORS.RED, JUICE.PARTICLE_BLOCK_BREAK);
                 this.audio.blockBreak();
                 this.combo.addBreak();
             }
