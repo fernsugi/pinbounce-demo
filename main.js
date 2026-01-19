@@ -633,9 +633,9 @@ class Ball {
             this.baseRadius *= 2;  // Double size
         }
 
-        // Rainball: always 2x speed
+        // Rainball: always 3x speed
         const isRainbow = color === 'rainbow';
-        const speedMultiplier = this.isBlue ? 3 : (isRainbow ? 2 : 1);
+        const speedMultiplier = this.isBlue ? 3 : (isRainbow ? 3 : 1);
 
         const speed = CONFIG.BALL_SPEED * speedMultiplier;
         this.vx = Math.cos(angle) * speed;
