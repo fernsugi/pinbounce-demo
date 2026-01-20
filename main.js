@@ -2343,8 +2343,10 @@ class Game {
         });
 
         // Show skill wheel if triggered (cooldown must have passed)
+        // Don't show if no blocks left and this was the last ball (game is over anyway)
         const cooldownPassed = Date.now() > this.gameState.skillWheelCooldown;
-        if (triggerSkillWheel && this.gameState.skillWheelState === 'idle' && cooldownPassed) {
+        const gameAboutToEnd = this.gameState.remainingBlocks === 0 && this.gameState.balls.length === 0;
+        if (triggerSkillWheel && this.gameState.skillWheelState === 'idle' && cooldownPassed && !gameAboutToEnd) {
             this.skillWheel.show();
         }
     }
