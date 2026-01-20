@@ -76,8 +76,8 @@ const CONFIG = {
         RAINBALL: 'rainbow'
     },
 
-    // Block color weights
-    COLOR_WEIGHTS: { red: 1, yellow: 1, blue: 1, neutral: 1 }
+    // Block color weights (1,1,1,0 = no gray blocks)
+    COLOR_WEIGHTS: { red: 1, yellow: 1, blue: 1, neutral: 0 }
 };
 
 // ===========================================
