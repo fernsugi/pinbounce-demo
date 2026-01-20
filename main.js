@@ -28,7 +28,10 @@ const CONFIG = {
 
     // Ball movement speed
     BALL_SPEED: 6,
-    MOTHER_BALL_SPEED: 3,  // Slower mother ball
+
+    // Base (spawn point) position - top center (X is calculated dynamically)
+    BASE_Y: 0,
+    BASE_RADIUS: 20,
 
     // Anti-frustration grace period (ms)
     WALL_HIT_GRACE_PERIOD: 200,
@@ -37,7 +40,7 @@ const CONFIG = {
     ACTIVE_BALL_CAP: 6,
 
     // Arrow spinner speed (radians per frame)
-    ARROW_SPIN_SPEED: 0.04,
+    ARROW_SPIN_SPEED: 0.008,
 
     // Slot machine timing (ms)
     SLOT_SPIN_TIME: 700,
@@ -67,7 +70,6 @@ const CONFIG = {
         YELLOW: '#ffc312',
         BLUE: '#3498db',
         NEUTRAL: '#7f8c8d',
-        WHITE: '#ffffff',
         RAINBALL: 'rainbow'
     },
 
@@ -569,16 +571,41 @@ class ComboSystem {
 // GAME STATE
 // ===========================================
 
+// ===========================================
+// WALL CLASS (obstacles)
+// ===========================================
+
+class Wall {
+    constructor(x, y, width, height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+    }
+
+    get centerX() { return this.x + this.width / 2; }
+    get centerY() { return this.y + this.height / 2; }
+}
+
+// ===========================================
+// GAME STATE
+// ===========================================
+
 class GameState {
     constructor() {
         this.balls = [];
         this.blocks = [];
-        this.motherBall = null;  // Special white ball that never dies
+        this.walls = [];  // Obstacle walls
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
-        this.arrowAngle = -Math.PI / 2;  // Now used for indicator rotation around mother ball
+        // Indicator angle: oscillates between 0 (right) and π (left) - full 180°
+        this.arrowAngle = Math.PI / 2;  // Start pointing down
+        this.arrowDirection = 1;  // 1 = towards left, -1 = towards right
         this.damageTexts = [];  // Floating damage numbers
+
+        // Spin counter (lose if it reaches 0 with blocks remaining)
+        this.spinsRemaining = 10;
 
         // Slot machine state
         this.slotState = 'idle';
@@ -599,12 +626,14 @@ class GameState {
 
     reset() {
         this.balls = [];
-        this.motherBall = null;  // Will be recreated in init
+        this.walls = [];
         this.damageTexts = [];
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
-        this.arrowAngle = -Math.PI / 2;
+        this.arrowAngle = Math.PI / 2;  // Start pointing down
+        this.arrowDirection = 1;
+        this.spinsRemaining = 10;
         this.slotState = 'idle';
         this.slotReels = ['?', '?', '?'];
         this.slotStoppedCount = 0;
@@ -651,11 +680,8 @@ class Ball {
 
         // Calculate speed based on ball type
         const isRainbow = color === 'rainbow';
-        const isMother = type === 'mother';
         let speed;
-        if (isMother) {
-            speed = CONFIG.MOTHER_BALL_SPEED;
-        } else if (this.isBlue) {
+        if (this.isBlue) {
             speed = CONFIG.BALL_SPEED * 3;
         } else if (isRainbow) {
             speed = CONFIG.BALL_SPEED * 3;
@@ -670,7 +696,7 @@ class Ball {
         this.isRed = color === 'red';
         this.redAOEReady = this.isRed;  // Can only use AOE once
 
-        this.lastWallHitTime = 0;
+        this.lastWallHitTime = Date.now();  // Grace period at spawn
         this.spawnTime = Date.now();
 
         // Trail for visual effect
@@ -712,8 +738,8 @@ class Ball {
         this.x += this.vx;
         this.y += this.vy;
 
-        // Normalize speed (use correct target speed for ball type)
-        const targetSpeed = this.type === 'mother' ? CONFIG.MOTHER_BALL_SPEED : CONFIG.BALL_SPEED;
+        // Normalize speed
+        const targetSpeed = CONFIG.BALL_SPEED;
         const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
         if (Math.abs(currentSpeed - targetSpeed) > 0.1) {
             const factor = targetSpeed / currentSpeed;
@@ -746,8 +772,8 @@ class Ball {
             hitWall = true;
         }
 
-        // Mother ball is immortal - skip wall life deduction
-        if (hitWall && this.type !== 'mother' && now - this.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
+        // Deduct wall life on hit
+        if (hitWall && now - this.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
             this.wallLives--;
             this.lastWallHitTime = now;
 
@@ -768,13 +794,11 @@ class Ball {
             }
         }
 
-        // Mother ball always survives
-        return this.type === 'mother' || this.wallLives > 0;
+        return this.wallLives > 0;
     }
 
     // Returns damage amount (0 = no damage, just bounce)
     getDamage(block) {
-        if (this.color === 'white') return 0;  // Mother ball just bounces
         if (this.color === 'rainbow') return 999;  // Rainbow instant kill
         if (this.bluePiercing) return 999;  // Blue bulldoze instant kill
         // Same color or neutral = 5 damage, different color = 1 damage
@@ -857,7 +881,9 @@ class SlotMachine {
 
     startSpin() {
         if (this.gameState.slotState !== 'idle') return;
+        if (this.gameState.spinsRemaining <= 0) return;  // No spins left
 
+        this.gameState.spinsRemaining--;
         this.gameState.slotState = 'spinning';
         this.gameState.slotStoppedCount = 0;
         this.gameState.slotReels = ['?', '?', '?'];
@@ -1112,8 +1138,64 @@ class Renderer {
         }
     }
 
-    drawMotherBallIndicator(motherBall, angle) {
-        if (!motherBall) return;
+    drawWall(wall) {
+        // Dark wall with subtle gradient
+        const gradient = this.ctx.createLinearGradient(
+            wall.x, wall.y, wall.x + wall.width, wall.y + wall.height
+        );
+        gradient.addColorStop(0, '#2a2a4a');
+        gradient.addColorStop(0.5, '#3a3a5a');
+        gradient.addColorStop(1, '#2a2a4a');
+
+        this.ctx.fillStyle = gradient;
+        this.ctx.beginPath();
+        this.roundRect(wall.x, wall.y, wall.width, wall.height, 4);
+        this.ctx.fill();
+
+        // Border
+        this.ctx.strokeStyle = 'rgba(100, 100, 140, 0.6)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.roundRect(wall.x, wall.y, wall.width, wall.height, 4);
+        this.ctx.stroke();
+
+        // Inner highlight
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.roundRect(wall.x + 2, wall.y + 2, wall.width - 4, wall.height - 4, 3);
+        this.ctx.stroke();
+    }
+
+    drawBase(angle) {
+        const baseX = this.canvas.width / 2;  // Top center
+        const baseY = CONFIG.BASE_Y;
+        const baseRadius = CONFIG.BASE_RADIUS;
+
+        // Draw half circle base stuck to top wall with glow
+        this.ctx.shadowColor = 'rgba(0, 210, 211, 0.6)';
+        this.ctx.shadowBlur = 15;
+
+        // Base outer arc (half circle from left to right)
+        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.8)';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.arc(baseX, baseY, baseRadius, 0, Math.PI);
+        this.ctx.stroke();
+
+        // Base inner fill (half circle)
+        const gradient = this.ctx.createRadialGradient(baseX, baseY, 0, baseX, baseY, baseRadius);
+        gradient.addColorStop(0, 'rgba(0, 210, 211, 0.5)');
+        gradient.addColorStop(0.7, 'rgba(0, 150, 151, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 100, 101, 0.1)');
+        this.ctx.fillStyle = gradient;
+        this.ctx.beginPath();
+        this.ctx.moveTo(baseX - baseRadius, baseY);
+        this.ctx.arc(baseX, baseY, baseRadius, Math.PI, 0, true);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        this.ctx.shadowBlur = 0;
 
         // Calculate line endpoint at wall
         const cos = Math.cos(angle);
@@ -1121,13 +1203,13 @@ class Renderer {
 
         // Find distance to each wall and pick the closest
         let dist = Infinity;
-        if (cos > 0) dist = Math.min(dist, (this.canvas.width - motherBall.x) / cos);
-        if (cos < 0) dist = Math.min(dist, -motherBall.x / cos);
-        if (sin > 0) dist = Math.min(dist, (this.canvas.height - motherBall.y) / sin);
-        if (sin < 0) dist = Math.min(dist, -motherBall.y / sin);
+        if (cos > 0) dist = Math.min(dist, (this.canvas.width - baseX) / cos);
+        if (cos < 0) dist = Math.min(dist, -baseX / cos);
+        if (sin > 0) dist = Math.min(dist, (this.canvas.height - baseY) / sin);
+        if (sin < 0) dist = Math.min(dist, -baseY / sin);
 
-        const endX = motherBall.x + cos * dist;
-        const endY = motherBall.y + sin * dist;
+        const endX = baseX + cos * dist;
+        const endY = baseY + sin * dist;
 
         // Dashed line to wall
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
@@ -1135,7 +1217,7 @@ class Renderer {
         this.ctx.setLineDash([8, 6]);
         this.ctx.lineCap = 'round';
         this.ctx.beginPath();
-        this.ctx.moveTo(motherBall.x, motherBall.y);
+        this.ctx.moveTo(baseX, baseY);
         this.ctx.lineTo(endX, endY);
         this.ctx.stroke();
         this.ctx.setLineDash([]);  // Reset dash
@@ -1383,6 +1465,11 @@ class Renderer {
         this.clear();
         this.rainbowHue = (this.rainbowHue + 2) % 360;
 
+        // Draw walls (obstacles)
+        for (const wall of this.gameState.walls) {
+            this.drawWall(wall);
+        }
+
         // Draw blocks
         for (const block of this.gameState.blocks) {
             this.drawBlock(block);
@@ -1391,14 +1478,12 @@ class Renderer {
         // Draw particles (behind balls)
         this.particles.render(this.ctx);
 
-        // Draw mother ball (always visible, bounces around)
-        if (this.gameState.motherBall && !this.gameState.isGameOver) {
-            this.drawBall(this.gameState.motherBall);
-            // Draw rotating indicator arc around mother ball
-            this.drawMotherBallIndicator(this.gameState.motherBall, this.gameState.arrowAngle);
+        // Draw base and indicator (top-left spawn point)
+        if (!this.gameState.isGameOver) {
+            this.drawBase(this.gameState.arrowAngle);
         }
 
-        // Draw spawned balls
+        // Draw balls
         for (const ball of this.gameState.balls) {
             this.drawBall(ball);
         }
@@ -1449,16 +1534,59 @@ class Renderer {
 
 function generateLevel(gameState, canvasWidth, canvasHeight) {
     gameState.blocks = [];
+    gameState.walls = [];
 
     const blockSize = CONFIG.BLOCK_SIZE;
     const padding = CONFIG.BLOCK_PADDING;
     const margin = CONFIG.BLOCK_MARGIN;
     const count = CONFIG.BLOCK_COUNT;
 
-    const centerX = canvasWidth / 2;
-    const centerY = canvasHeight / 2;
-    const centerClearRadius = 80;
+    // Base clear zone (top center)
+    const baseX = canvasWidth / 2;
+    const baseY = CONFIG.BASE_Y;
+    const baseClearRadius = 80;  // Keep area around base clear for shooting
 
+    // Generate walls first
+    const wallCount = 6 + Math.floor(Math.random() * 4);  // 6-9 walls
+    const wallPadding = 15;  // Space around walls
+
+    function isValidWallPosition(x, y, w, h) {
+        // Check distance from base
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const dx = cx - baseX;
+        const dy = cy - baseY;
+        if (Math.sqrt(dx * dx + dy * dy) < baseClearRadius + Math.max(w, h) / 2) return false;
+
+        // Check against other walls
+        for (const wall of gameState.walls) {
+            if (x < wall.x + wall.width + wallPadding &&
+                x + w + wallPadding > wall.x &&
+                y < wall.y + wall.height + wallPadding &&
+                y + h + wallPadding > wall.y) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    let wallAttempts = 0;
+    while (gameState.walls.length < wallCount && wallAttempts < 100) {
+        wallAttempts++;
+        // Random wall size
+        const isHorizontal = Math.random() > 0.5;
+        const wallWidth = isHorizontal ? 60 + Math.random() * 80 : 15 + Math.random() * 10;
+        const wallHeight = isHorizontal ? 15 + Math.random() * 10 : 60 + Math.random() * 80;
+
+        const x = margin + Math.random() * (canvasWidth - 2 * margin - wallWidth);
+        const y = margin + 50 + Math.random() * (canvasHeight - 2 * margin - wallHeight - 50);
+
+        if (isValidWallPosition(x, y, wallWidth, wallHeight)) {
+            gameState.walls.push(new Wall(x, y, wallWidth, wallHeight));
+        }
+    }
+
+    // Color pool for blocks
     const colorPool = [];
     for (const [color, weight] of Object.entries(CONFIG.COLOR_WEIGHTS)) {
         for (let i = 0; i < weight; i++) {
@@ -1466,11 +1594,23 @@ function generateLevel(gameState, canvasWidth, canvasHeight) {
         }
     }
 
-    function isValidPosition(x, y) {
-        const dx = (x + blockSize/2) - centerX;
-        const dy = (y + blockSize/2) - centerY;
-        if (Math.sqrt(dx*dx + dy*dy) < centerClearRadius) return false;
+    function isValidBlockPosition(x, y) {
+        // Check distance from base
+        const dx = (x + blockSize / 2) - baseX;
+        const dy = (y + blockSize / 2) - baseY;
+        if (Math.sqrt(dx * dx + dy * dy) < baseClearRadius) return false;
 
+        // Check against walls
+        for (const wall of gameState.walls) {
+            if (x < wall.x + wall.width + padding &&
+                x + blockSize + padding > wall.x &&
+                y < wall.y + wall.height + padding &&
+                y + blockSize + padding > wall.y) {
+                return false;
+            }
+        }
+
+        // Check against other blocks
         for (const block of gameState.blocks) {
             if (x < block.x + block.width + padding &&
                 x + blockSize + padding > block.x &&
@@ -1490,7 +1630,7 @@ function generateLevel(gameState, canvasWidth, canvasHeight) {
         const x = margin + Math.random() * (canvasWidth - 2 * margin - blockSize);
         const y = margin + Math.random() * (canvasHeight - 2 * margin - blockSize);
 
-        if (isValidPosition(x, y)) {
+        if (isValidBlockPosition(x, y)) {
             const color = colorPool[Math.floor(Math.random() * colorPool.length)];
             gameState.blocks.push(new Block(x, y, blockSize, color));
         }
@@ -1531,7 +1671,7 @@ class Game {
         // UI elements
         this.spacebarHint = document.getElementById('spacebar-hint');
         this.actionLabel = document.getElementById('action-label');
-        this.ballCountEl = document.getElementById('ball-count');
+        this.spinCountEl = document.getElementById('spin-count');
         this.blockCountEl = document.getElementById('block-count');
         this.overlay = document.getElementById('overlay');
         this.overlayTitle = document.getElementById('overlay-title');
@@ -1631,13 +1771,6 @@ class Game {
         this.combo.reset();
         generateLevel(this.gameState, this.canvas.width, this.canvas.height);
         this.slotMachine.reset();
-
-        // Create the mother ball - white ball that bounces forever
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
-        const randomAngle = Math.random() * Math.PI * 2;
-        this.gameState.motherBall = new Ball(cx, cy, 'white', 'mother', randomAngle);
-
         this.updateUI();
     }
 
@@ -1663,8 +1796,9 @@ class Game {
     }
 
     spawnBalls(color, count) {
-        // Spawn from mother ball's current position
-        const motherBall = this.gameState.motherBall;
+        // Spawn from base position (top center)
+        const baseX = this.canvas.width / 2;
+        const baseY = CONFIG.BASE_Y;
         const angle = this.gameState.arrowAngle;
         const isRainbow = color === 'rainbow';
 
@@ -1678,9 +1812,8 @@ class Game {
 
         for (let i = 0; i < count; i++) {
             setTimeout(() => {
-                // Get mother ball's current position (it keeps moving!)
-                const cx = motherBall ? motherBall.x : this.canvas.width / 2;
-                const cy = motherBall ? motherBall.y : this.canvas.height / 2;
+                const cx = baseX;
+                const cy = baseY;
 
                 // Slight angle variation for multiple balls
                 const angleOffset = count > 1 ? (i - (count - 1) / 2) * 0.15 : 0;
@@ -1716,13 +1849,33 @@ class Game {
         }
     }
 
-    processBallBlockCollisions() {
-        // Include mother ball in collision processing
-        const allBalls = this.gameState.motherBall
-            ? [this.gameState.motherBall, ...this.gameState.balls]
-            : this.gameState.balls;
+    processBallWallCollisions() {
+        for (const ball of this.gameState.balls) {
+            for (const wall of this.gameState.walls) {
+                const collision = circleRectCollision(ball, wall);
+                if (collision.hit) {
+                    reflectVelocity(ball, collision.nx, collision.ny);
+                    ball.x += collision.nx * collision.penetration;
+                    ball.y += collision.ny * collision.penetration;
 
-        for (const ball of allBalls) {
+                    // Blue special: lose piercing, slow down, and shrink on wall hit
+                    if (ball.bluePiercing) {
+                        ball.bluePiercing = false;
+                        // Slow down to normal speed
+                        const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+                        const factor = CONFIG.BALL_SPEED / currentSpeed;
+                        ball.vx *= factor;
+                        ball.vy *= factor;
+                        // Shrink back to normal size
+                        ball.baseRadius = ball.getRadiusByType(ball.type);
+                    }
+                }
+            }
+        }
+    }
+
+    processBallBlockCollisions() {
+        for (const ball of this.gameState.balls) {
             for (const block of this.gameState.blocks) {
                 if (block.hp <= 0) continue;
 
@@ -1884,18 +2037,20 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
-        // Pause everything while slot is active (mother ball + indicator stop)
+        // Pause indicator while slot is active
         if (this.gameState.slotState !== 'idle') {
             this.updateUI();
             return;
         }
 
-        // Rotate indicator around mother ball
-        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
-
-        // Update mother ball
-        if (this.gameState.motherBall) {
-            this.gameState.motherBall.update(this.canvas.width, this.canvas.height, null);
+        // Ping-pong indicator between 0 (right) and π (left) - full 180 degrees
+        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED * this.gameState.arrowDirection;
+        if (this.gameState.arrowAngle >= Math.PI) {
+            this.gameState.arrowAngle = Math.PI;
+            this.gameState.arrowDirection = -1;
+        } else if (this.gameState.arrowAngle <= 0) {
+            this.gameState.arrowAngle = 0;
+            this.gameState.arrowDirection = 1;
         }
 
         // Check for slow-motion trigger
@@ -1932,6 +2087,7 @@ class Game {
         this.gameState.blocks = this.gameState.blocks.filter(b => !b.isDestroyed);
 
         // Process collisions
+        this.processBallWallCollisions();
         this.processBallBlockCollisions();
 
         // Update particles
@@ -1962,16 +2118,28 @@ class Game {
             ? this.gameState.remainingBlocks
             : this.gameState.remainingColoredBlocks;
 
+        // Win condition: all blocks destroyed
         if (remaining === 0) {
             this.gameState.isGameOver = true;
             this.gameState.hasWon = true;
             this.showOverlay(true);
             this.audio.winJingle();
+            return;
+        }
+
+        // Lose condition: no spins left and no active balls
+        if (this.gameState.spinsRemaining <= 0 &&
+            this.gameState.balls.length === 0 &&
+            this.gameState.slotState === 'idle') {
+            this.gameState.isGameOver = true;
+            this.gameState.hasWon = false;
+            this.showOverlay(false);
+            this.audio.loseSound();
         }
     }
 
     updateUI() {
-        this.ballCountEl.textContent = `${this.gameState.activeBallCount}`;
+        this.spinCountEl.textContent = `${this.gameState.spinsRemaining}`;
 
         const remaining = CONFIG.WIN_REQUIRES_ALL_BLOCKS
             ? this.gameState.remainingBlocks
@@ -2016,8 +2184,8 @@ class Game {
     showOverlay(won) {
         this.overlay.classList.remove('hidden');
         this.overlayTitle.className = won ? 'win' : 'lose';
-        this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'TRY AGAIN';
-        this.overlayMessage.textContent = won ? 'All blocks destroyed!' : 'Better luck next time!';
+        this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'GAME OVER';
+        this.overlayMessage.textContent = won ? 'All blocks destroyed!' : 'Out of spins!';
     }
 
     hideOverlay() {
