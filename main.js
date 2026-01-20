@@ -744,6 +744,9 @@ class Ball {
         // Skill wheel abilities (applied to all balls when triggered)
         this.hasBulldoze = false;  // Pierces through blocks
         this.hasExplosion = false; // Explodes on hit
+
+        // Track wall hits this frame (for bonus points when no blocks left)
+        this.hitWallThisFrame = false;
     }
 
     get radius() {
@@ -775,6 +778,7 @@ class Ball {
 
         // Side wall collisions (left and right)
         let hitOuterWall = false;
+        this.hitWallThisFrame = false;  // Reset each frame
         if (this.x - this.radius < 0) {
             this.x = this.radius;
             this.vx = Math.abs(this.vx);
@@ -792,6 +796,9 @@ class Ball {
             this.vy = Math.abs(this.vy);
             hitOuterWall = true;
         }
+
+        // Track wall hit for bonus points
+        this.hitWallThisFrame = hitOuterWall;
 
         // Lose boost on outer wall hit (with spawn grace period)
         if (hitOuterWall && this.boosted && timeSinceSpawn > 200) {
@@ -2693,6 +2700,15 @@ class Game {
             }
             return alive;
         });
+
+        // Bonus points for bounces when no blocks left (small reward for waiting)
+        if (this.gameState.remainingBlocks === 0) {
+            for (const ball of this.gameState.balls) {
+                if (ball.hitWallThisFrame) {
+                    this.gameState.points += 1;
+                }
+            }
+        }
 
         // Update blocks
         for (const block of this.gameState.blocks) {
