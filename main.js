@@ -2837,6 +2837,7 @@ class Game {
 
         // Queue system for batched ball spawning
         this.queuedBalls = [];  // Array of {color, count} objects
+        this.pendingBallSpawns = 0;  // Balls waiting to spawn (in setTimeout)
         this.isInGame = false;  // Are we in an active game session?
         this.sessionPoints = 0;  // Points earned this session
 
@@ -2947,6 +2948,7 @@ class Game {
         this.slotMachine.reset();
         this.skillWheel.reset();
         this.queuedBalls = [];
+        this.pendingBallSpawns = 0;
         this.sessionPoints = 0;
         this.updateUI();
         this.updateQueueUI();
@@ -3093,11 +3095,15 @@ class Game {
         this.queuedBalls = [];
         this.updateQueueUI();
 
+        // Track pending spawns to prevent premature game end
+        this.pendingBallSpawns = allBalls.length;
+
         // Spawn balls one by one with quick delay (each from current base position)
         const spawnDelay = 80; // ms between each ball
         allBalls.forEach((color, index) => {
             setTimeout(() => {
                 this.spawnSingleBall(color, pendingSkill);
+                this.pendingBallSpawns--;
             }, index * spawnDelay);
         });
     }
@@ -3681,7 +3687,8 @@ class Game {
             : this.gameState.remainingColoredBlocks;
 
         // Win condition: all blocks destroyed AND all balls in baskets
-        if (remaining === 0 && this.gameState.balls.length === 0 && this.queuedBalls.length === 0) {
+        if (remaining === 0 && this.gameState.balls.length === 0 &&
+            this.queuedBalls.length === 0 && this.pendingBallSpawns === 0) {
             this.gameState.isGameOver = true;
             this.gameState.hasWon = true;
             this.showOverlay(true);
@@ -3689,10 +3696,11 @@ class Game {
             return;
         }
 
-        // Lose condition: can't afford spin AND no active balls AND no queued balls AND slot is idle
+        // Lose condition: can't afford spin AND no active balls AND no queued/pending balls AND slot is idle
         if (!playerData.canAffordSpin() &&
             this.gameState.balls.length === 0 &&
             this.queuedBalls.length === 0 &&
+            this.pendingBallSpawns === 0 &&
             this.gameState.slotState === 'idle') {
             this.gameState.isGameOver = true;
             this.gameState.hasWon = false;
