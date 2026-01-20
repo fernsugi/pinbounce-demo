@@ -578,6 +578,7 @@ class GameState {
         this.isGameOver = false;
         this.hasWon = false;
         this.arrowAngle = -Math.PI / 2;  // Now used for indicator rotation around mother ball
+        this.damageTexts = [];  // Floating damage numbers
 
         // Slot machine state
         this.slotState = 'idle';
@@ -599,6 +600,7 @@ class GameState {
     reset() {
         this.balls = [];
         this.motherBall = null;  // Will be recreated in init
+        this.damageTexts = [];
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
@@ -773,8 +775,8 @@ class Ball {
     // Returns damage amount (0 = no damage, just bounce)
     getDamage(block) {
         if (this.color === 'white') return 0;  // Mother ball just bounces
-        if (this.color === 'rainbow') return 5;  // Rainbow always full damage
-        if (this.bluePiercing) return 5;  // Blue piercing = full damage
+        if (this.color === 'rainbow') return 999;  // Rainbow instant kill
+        if (this.bluePiercing) return 999;  // Blue bulldoze instant kill
         // Same color or neutral = 5 damage, different color = 1 damage
         if (block.color === 'neutral' || block.color === this.color) {
             return 5;
@@ -1401,6 +1403,20 @@ class Renderer {
             this.drawBall(ball);
         }
 
+        // Draw damage texts
+        for (const dt of this.gameState.damageTexts) {
+            const alpha = dt.life / dt.maxLife;
+            this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            // Shadow
+            this.ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.7})`;
+            this.ctx.fillText(`-${dt.damage}`, dt.x + 1, dt.y + 1);
+            // Red text
+            this.ctx.fillStyle = `rgba(255, 80, 80, ${alpha})`;
+            this.ctx.fillText(`-${dt.damage}`, dt.x, dt.y);
+        }
+
         this.ctx.restore();
 
         // Draw screen flash overlay (after restore so it's not affected by shake)
@@ -1716,6 +1732,10 @@ class Game {
                     const damage = ball.getDamage(block);
 
                     if (damage > 0) {
+                        // Show damage text (cap display at actual HP for instant kills)
+                        const actualDamage = Math.min(damage, block.hp);
+                        this.spawnDamageText(block.centerX, block.y, actualDamage);
+
                         const destroyed = block.takeDamage(damage);
 
                         if (destroyed) {
@@ -1787,12 +1807,23 @@ class Game {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance <= aoeRadius) {
-                block.takeDamage();
+                this.spawnDamageText(block.centerX, block.y, block.hp);  // Show actual HP as damage
+                block.takeDamage(999);  // Instant kill
                 this.particles.emit(block.centerX, block.centerY, CONFIG.COLORS.RED, JUICE.PARTICLE_BLOCK_BREAK);
                 this.audio.blockBreak();
                 this.combo.addBreak();
             }
         }
+    }
+
+    spawnDamageText(x, y, damage) {
+        this.gameState.damageTexts.push({
+            x: x,
+            y: y - 10,  // Start slightly above
+            damage: damage,
+            life: 600,  // ms
+            maxLife: 600
+        });
     }
 
     showCombo(count) {
@@ -1905,6 +1936,13 @@ class Game {
 
         // Update particles
         this.particles.update(dt);
+
+        // Update damage texts
+        for (const dt of this.gameState.damageTexts) {
+            dt.life -= 16;  // ~60fps
+            dt.y -= 0.8;  // Float up
+        }
+        this.gameState.damageTexts = this.gameState.damageTexts.filter(dt => dt.life > 0);
 
         // Update combo
         this.combo.update();
