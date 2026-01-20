@@ -2350,10 +2350,10 @@ class Game {
         });
 
         // Show skill wheel if triggered (cooldown must have passed)
-        // Don't show if no blocks left (nothing to use the skill on)
+        // Don't show if no blocks left or game is over
         const cooldownPassed = Date.now() > this.gameState.skillWheelCooldown;
         const hasBlocksLeft = this.gameState.remainingBlocks > 0;
-        if (triggerSkillWheel && this.gameState.skillWheelState === 'idle' && cooldownPassed && hasBlocksLeft) {
+        if (triggerSkillWheel && this.gameState.skillWheelState === 'idle' && cooldownPassed && hasBlocksLeft && !this.gameState.isGameOver) {
             this.skillWheel.show();
         }
     }
@@ -2805,6 +2805,10 @@ class Game {
     }
 
     showOverlay(won) {
+        // Hide any active overlays first
+        this.skillWheel.hide();
+        document.getElementById('slot-overlay').classList.add('hidden');
+
         this.overlay.classList.remove('hidden');
         this.overlayTitle.className = won ? 'win' : 'lose';
         this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'GAME OVER';
