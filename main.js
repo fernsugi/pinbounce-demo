@@ -2331,8 +2331,8 @@ class Game {
             ? this.gameState.remainingBlocks
             : this.gameState.remainingColoredBlocks;
 
-        // Win condition: all blocks destroyed
-        if (remaining === 0) {
+        // Win condition: all blocks destroyed AND all balls in baskets
+        if (remaining === 0 && this.gameState.balls.length === 0) {
             this.gameState.isGameOver = true;
             this.gameState.hasWon = true;
             this.showOverlay(true);
