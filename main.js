@@ -712,9 +712,9 @@ class Ball {
         const isRainbow = color === 'rainbow';
         let baseSpeed;
         if (this.isBlue) {
-            baseSpeed = CONFIG.BALL_SPEED * 3;
+            baseSpeed = CONFIG.BALL_SPEED * 1.5;  // Blue slightly faster
         } else if (isRainbow) {
-            baseSpeed = CONFIG.BALL_SPEED * 3;
+            baseSpeed = CONFIG.BALL_SPEED * 2;    // Rainbow faster
         } else {
             baseSpeed = CONFIG.BALL_SPEED;
         }
