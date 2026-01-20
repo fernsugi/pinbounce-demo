@@ -1229,6 +1229,9 @@ class SkillWheel {
         this.hintEl.textContent = 'Press SPACE to stop';
         this.stopping = false;
         this.gameState.skillWheelState = 'spinning';
+
+        // Random starting position so players don't miss consecutively
+        this.rotation = Math.random() * Math.PI * 2;
         this.drawWheel();
 
         // Auto-start spinning
@@ -1535,12 +1538,21 @@ class Renderer {
         const baseColors = ['#2d2d5a', '#2d5a3d', '#5a2d5a', '#2d5a3d', '#2d2d5a'];
         const baseLabels = ['SKILL', 'x1', 'x3', 'x1', 'SKILL'];
 
+        // Check if skill wheel is on cooldown
+        const skillOnCooldown = Date.now() < this.gameState.skillWheelCooldown;
+
         for (let i = 0; i < 5; i++) {
             const x = i * basketWidth;
             const basketType = this.gameState.basketOrder[i];
             const multiplier = baseMultipliers[basketType];
-            const color = baseColors[basketType];
-            const label = baseLabels[basketType];
+            let color = baseColors[basketType];
+            let label = baseLabels[basketType];
+
+            // Dim SKILL baskets when on cooldown
+            const isSkillBasket = multiplier === 0;
+            if (isSkillBasket && skillOnCooldown) {
+                color = '#1a1a2a';  // Dimmed color
+            }
 
             // Basket background
             const gradient = this.ctx.createLinearGradient(x, y, x, this.canvas.height);
@@ -1550,8 +1562,12 @@ class Renderer {
             this.ctx.fillRect(x, y, basketWidth, basketHeight);
 
             // Basket border
-            this.ctx.strokeStyle = multiplier === 3 ? '#9b59b6' :
-                                   multiplier === 1 ? '#27ae60' : '#5555aa';
+            let borderColor = multiplier === 3 ? '#9b59b6' :
+                              multiplier === 1 ? '#27ae60' : '#5555aa';
+            if (isSkillBasket && skillOnCooldown) {
+                borderColor = '#333355';  // Dimmed border
+            }
+            this.ctx.strokeStyle = borderColor;
             this.ctx.lineWidth = 2;
             this.ctx.strokeRect(x, y, basketWidth, basketHeight);
 
@@ -1559,8 +1575,12 @@ class Renderer {
             this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillStyle = multiplier === 3 ? '#e056fd' :
-                                 multiplier === 1 ? '#2ecc71' : '#8888ff';
+            let labelColor = multiplier === 3 ? '#e056fd' :
+                             multiplier === 1 ? '#2ecc71' : '#8888ff';
+            if (isSkillBasket && skillOnCooldown) {
+                labelColor = '#444466';  // Dimmed label
+            }
+            this.ctx.fillStyle = labelColor;
             this.ctx.fillText(label, x + basketWidth / 2, y + basketHeight / 2);
         }
     }
