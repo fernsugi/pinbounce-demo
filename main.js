@@ -21,13 +21,14 @@ const CONFIG = {
     BALL_RADIUS_BIG: 16,
 
     // Ball wall lives by type
-    WALL_LIVES_NORMAL: 6,
-    WALL_LIVES_MEDIUM: 7,
-    WALL_LIVES_BIG: 9,
-    WALL_LIVES_RAINBALL: 6,
+    WALL_LIVES_NORMAL: 3,
+    WALL_LIVES_MEDIUM: 4,
+    WALL_LIVES_BIG: 5,
+    WALL_LIVES_RAINBALL: 3,
 
     // Ball movement speed
     BALL_SPEED: 6,
+    MOTHER_BALL_SPEED: 3,  // Slower mother ball
 
     // Anti-frustration grace period (ms)
     WALL_HIT_GRACE_PERIOD: 200,
@@ -646,11 +647,20 @@ class Ball {
             this.baseRadius *= 2;  // Double size
         }
 
-        // Rainball: always 3x speed
+        // Calculate speed based on ball type
         const isRainbow = color === 'rainbow';
-        const speedMultiplier = this.isBlue ? 3 : (isRainbow ? 3 : 1);
+        const isMother = type === 'mother';
+        let speed;
+        if (isMother) {
+            speed = CONFIG.MOTHER_BALL_SPEED;
+        } else if (this.isBlue) {
+            speed = CONFIG.BALL_SPEED * 3;
+        } else if (isRainbow) {
+            speed = CONFIG.BALL_SPEED * 3;
+        } else {
+            speed = CONFIG.BALL_SPEED;
+        }
 
-        const speed = CONFIG.BALL_SPEED * speedMultiplier;
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
 
@@ -700,10 +710,11 @@ class Ball {
         this.x += this.vx;
         this.y += this.vy;
 
-        // Normalize speed
+        // Normalize speed (use correct target speed for ball type)
+        const targetSpeed = this.type === 'mother' ? CONFIG.MOTHER_BALL_SPEED : CONFIG.BALL_SPEED;
         const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        if (Math.abs(currentSpeed - CONFIG.BALL_SPEED) > 0.1) {
-            const factor = CONFIG.BALL_SPEED / currentSpeed;
+        if (Math.abs(currentSpeed - targetSpeed) > 0.1) {
+            const factor = targetSpeed / currentSpeed;
             this.vx *= factor;
             this.vy *= factor;
         }
