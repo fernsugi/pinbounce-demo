@@ -24,20 +24,27 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 ### Baskets (Bottom)
 - 5 baskets with shuffled positions each game: SKILL, x1, x3, x1, SKILL
 - x1/x3 multiply the ball's accumulated points
-- SKILL basket triggers the skill wheel
+- SKILL basket triggers the skill wheel (shows "---" when on cooldown)
 
 ### Skill Wheel
 - Triggered when ball enters SKILL basket (if blocks remain)
 - Segments: BOMB, SPLIT, BULLDOZE, and 3 MISS slots
-- BOMB: Next hit explodes in area damage
-- BULLDOZE: Ball doubles in size, pierces through blocks
-- SPLIT: Spawn 3x balls on next shot
-- If no balls on screen, skill is saved for next shot ("NEXT: SKILL" indicator)
+- BOMB: All balls gain explosion ability (area damage on hit)
+- BULLDOZE: All balls double in size and pierce through blocks
+- SPLIT: Next shot spawns 3x the normal ball count
+- Random starting position each spin (prevents consecutive misses)
+- If no balls on screen, skill is saved for next shot ("NEXT: SKILL" indicator below base)
+- 2-second cooldown between triggers
 - Press SPACE to skip animation instantly
+
+### Fever Time
+- Activates when all blocks are cleared and balls are still bouncing
+- Flashy "FEVER TIME!" banner appears in center
+- +1 bonus point per wall bounce (outer walls AND obstacle walls)
 
 ### Scoring
 - Points from block damage * basket multiplier
-- +1 bonus point per wall bounce when all blocks cleared
+- Fever Time: +1 per bounce when no blocks left
 - Final score multiplied by (1 + remaining spins * 0.1)
 
 ## Key Files
@@ -51,8 +58,8 @@ Main game logic containing:
 - `Block` - Block entities (line ~840)
 - `SlotMachine` - Slot mechanics (line ~893)
 - `SkillWheel` - Skill wheel mechanics (line ~1120)
-- `Renderer` - Canvas rendering (line ~1340)
-- `Game` - Main game loop and logic (line ~1960)
+- `Renderer` - Canvas rendering (line ~1426)
+- `Game` - Main game loop and logic (line ~2060)
 
 ### index.html
 Game structure with overlays for slot machine, skill wheel, settings, and game over.
