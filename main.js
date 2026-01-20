@@ -1732,6 +1732,12 @@ class Game {
                     const damage = ball.getDamage(block);
 
                     if (damage > 0) {
+                        // Red special: AOE explosion on first hit (any block)
+                        if (ball.redAOEReady) {
+                            ball.redAOEReady = false;
+                            this.triggerRedAOE(block.centerX, block.centerY);
+                        }
+
                         // Show damage text (cap display at actual HP for instant kills)
                         const actualDamage = Math.min(damage, block.hp);
                         this.spawnDamageText(block.centerX, block.y, actualDamage);
@@ -1750,12 +1756,6 @@ class Game {
 
                             this.audio.blockBreak();
                             this.haptics.blockBreak();
-
-                            // Red special: AOE explosion on first block break
-                            if (ball.redAOEReady) {
-                                ball.redAOEReady = false;
-                                this.triggerRedAOE(block.centerX, block.centerY);
-                            }
 
                             // Combo
                             const milestone = this.combo.addBreak();
