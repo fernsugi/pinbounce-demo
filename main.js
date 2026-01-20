@@ -2404,14 +2404,14 @@ class Game {
                 const ball1 = new Ball(ball.x, ball.y, ball.color, ball.type, angle1);
                 ball1.vx = Math.cos(angle1) * speed;
                 ball1.vy = Math.sin(angle1) * speed;
-                ball1.points = Math.floor(ball.points / 3);
+                ball1.points = 0;  // Clones don't inherit points
                 ball1.boosted = ball.boosted;
                 ball1.normalSpeed = ball.normalSpeed;
 
                 const ball2 = new Ball(ball.x, ball.y, ball.color, ball.type, angle2);
                 ball2.vx = Math.cos(angle2) * speed;
                 ball2.vy = Math.sin(angle2) * speed;
-                ball2.points = Math.floor(ball.points / 3);
+                ball2.points = 0;  // Clones don't inherit points
                 ball2.boosted = ball.boosted;
                 ball2.normalSpeed = ball.normalSpeed;
 
