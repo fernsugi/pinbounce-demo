@@ -28,6 +28,8 @@ const CONFIG = {
 
     // Ball movement speed
     BALL_SPEED: 2,
+    BALL_BOOST_MULTIPLIER: 2.5,  // Initial speed boost when spawning
+    BALL_BOOST_DURATION: 1500,   // Boost lasts 1.5 seconds
     GRAVITY: 0.05,  // Downward acceleration per frame
 
     // Base (spawn point) position - top center (X is calculated dynamically)
@@ -709,17 +711,22 @@ class Ball {
 
         // Calculate speed based on ball type
         const isRainbow = color === 'rainbow';
-        let speed;
+        let baseSpeed;
         if (this.isBlue) {
-            speed = CONFIG.BALL_SPEED * 3;
+            baseSpeed = CONFIG.BALL_SPEED * 3;
         } else if (isRainbow) {
-            speed = CONFIG.BALL_SPEED * 3;
+            baseSpeed = CONFIG.BALL_SPEED * 3;
         } else {
-            speed = CONFIG.BALL_SPEED;
+            baseSpeed = CONFIG.BALL_SPEED;
         }
 
-        this.vx = Math.cos(angle) * speed;
-        this.vy = Math.sin(angle) * speed;
+        // Apply initial speed boost
+        this.normalSpeed = baseSpeed;
+        this.boosted = true;
+        const boostedSpeed = baseSpeed * CONFIG.BALL_BOOST_MULTIPLIER;
+
+        this.vx = Math.cos(angle) * boostedSpeed;
+        this.vy = Math.sin(angle) * boostedSpeed;
 
         // Red special: AOE on first block hit
         this.isRed = color === 'red';
@@ -756,6 +763,19 @@ class Ball {
         // Apply gravity
         this.vy += CONFIG.GRAVITY;
 
+        // Check if boost duration has expired
+        const timeSinceSpawn = Date.now() - this.spawnTime;
+        if (this.boosted && timeSinceSpawn > CONFIG.BALL_BOOST_DURATION) {
+            this.boosted = false;
+            // Reduce speed to normal (preserve direction, adjust magnitude)
+            const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            if (currentSpeed > this.normalSpeed) {
+                const factor = this.normalSpeed / currentSpeed;
+                this.vx *= factor;
+                this.vy *= factor;
+            }
+        }
+
         this.x += this.vx;
         this.y += this.vy;
 
@@ -780,13 +800,14 @@ class Ball {
         }
 
         // Blue loses piercing on outer wall hit (with spawn grace period)
-        const timeSinceSpawn = Date.now() - this.spawnTime;
         if (hitOuterWall && this.bluePiercing && timeSinceSpawn > 200) {
             this.bluePiercing = false;
-            // Slow down to normal speed
+            this.boosted = false;  // Also end boost
+            // Slow down to normal (non-blue) speed
+            this.normalSpeed = CONFIG.BALL_SPEED;
             const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-            if (currentSpeed > CONFIG.BALL_SPEED) {
-                const factor = CONFIG.BALL_SPEED / currentSpeed;
+            if (currentSpeed > this.normalSpeed) {
+                const factor = this.normalSpeed / currentSpeed;
                 this.vx *= factor;
                 this.vy *= factor;
             }
