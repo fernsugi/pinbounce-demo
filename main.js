@@ -1059,6 +1059,29 @@ class SlotMachine {
         this.resolveResult();
     }
 
+    skipResultDisplay() {
+        // Skip result display and spawn balls immediately
+        if (this.gameState.slotState !== 'result') return;
+
+        const reels = this.gameState.slotReels;
+        const firstReelColor = reels[0];
+        const firstColorCount = reels.filter(r => r === firstReelColor).length;
+        const isRainbow = new Set(reels).size === 3;
+
+        let ballColor, ballCount;
+        if (isRainbow) {
+            ballColor = 'rainbow';
+            ballCount = 1;
+        } else {
+            ballColor = firstReelColor;
+            ballCount = firstColorCount;
+        }
+
+        document.getElementById('slot-overlay').classList.add('hidden');
+        this.gameState.slotState = 'idle';
+        if (this.onResult) this.onResult(ballColor, ballCount);
+    }
+
     updateReelDisplay() {
         for (let i = 0; i < 3; i++) {
             const reelEl = document.getElementById(`reel-${i}`);
@@ -1290,6 +1313,20 @@ class SkillWheel {
         this.rotation = this.targetRotation;
         this.drawWheel();
         this.onSpinComplete();
+    }
+
+    skipResult() {
+        // Skip result display and close immediately
+        if (this.gameState.skillWheelState !== 'result') return;
+
+        // Calculate result (same as onSpinComplete)
+        const normalizedRotation = (((-this.rotation) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        const segmentAngle = (Math.PI * 2) / this.segments.length;
+        const segmentIndex = Math.floor(normalizedRotation / segmentAngle);
+        const result = this.segments[segmentIndex];
+
+        this.hide();
+        if (this.onResult) this.onResult(result.skill);
     }
 
     reset() {
@@ -2166,30 +2203,28 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
-        // Handle skill wheel - press again to skip animation
+        // Handle skill wheel - press to skip straight to result
         if (this.gameState.skillWheelState === 'spinning') {
-            if (this.skillWheel.stopping) {
-                // Already stopping, skip to result
-                this.skillWheel.skipToResult();
-            } else {
-                this.skillWheel.stopSpin();
-            }
+            this.skillWheel.skipToResult();
             return;
         }
         if (this.gameState.skillWheelState === 'result') {
-            return;  // Wait for wheel to finish
+            // Skip result display, close immediately
+            this.skillWheel.skipResult();
+            return;
         }
 
-        // Handle slot machine - press again to skip animation
+        // Handle slot machine - press to skip straight to result
         if (this.gameState.slotState === 'idle') {
             if (!this.gameState.canSpawnBall()) return;
             this.slotMachine.startSpin();
             this.audio.uiClick();
-        } else if (this.gameState.slotState === 'spinning') {
-            this.slotMachine.stopReel();
-        } else if (this.gameState.slotState === 'stopping') {
-            // Skip remaining reels and show result
+        } else if (this.gameState.slotState === 'spinning' || this.gameState.slotState === 'stopping') {
+            // Skip straight to result
             this.slotMachine.skipToResult();
+        } else if (this.gameState.slotState === 'result') {
+            // Skip result display
+            this.slotMachine.skipResultDisplay();
         }
         this.updateUI();
     }
