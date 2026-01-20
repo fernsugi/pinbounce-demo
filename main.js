@@ -27,7 +27,8 @@ const CONFIG = {
     WALL_LIVES_RAINBALL: 6,
 
     // Ball movement speed
-    BALL_SPEED: 6,
+    BALL_SPEED: 2,
+    GRAVITY: 0.05,  // Downward acceleration per frame
 
     // Base (spawn point) position - top center (X is calculated dynamically)
     BASE_Y: 0,
@@ -576,15 +577,41 @@ class ComboSystem {
 // ===========================================
 
 class Wall {
-    constructor(x, y, width, height) {
-        this.x = x;
-        this.y = y;
+    constructor(x, y, width, height, angle = 0) {
+        this.x = x;  // Center X
+        this.y = y;  // Center Y
         this.width = width;
         this.height = height;
+        this.angle = angle;  // Rotation in radians
+        this.hp = 2;  // Walls have 2 HP
+        this.cracked = false;  // Shows crack when hp = 1
     }
 
-    get centerX() { return this.x + this.width / 2; }
-    get centerY() { return this.y + this.height / 2; }
+    takeDamage() {
+        this.hp--;
+        if (this.hp === 1) {
+            this.cracked = true;
+        }
+        return this.hp <= 0;  // Returns true if destroyed
+    }
+
+    get centerX() { return this.x; }
+    get centerY() { return this.y; }
+
+    // Get corners for collision detection
+    getCorners() {
+        const cos = Math.cos(this.angle);
+        const sin = Math.sin(this.angle);
+        const hw = this.width / 2;
+        const hh = this.height / 2;
+
+        return [
+            { x: this.x + (-hw * cos - -hh * sin), y: this.y + (-hw * sin + -hh * cos) },
+            { x: this.x + (hw * cos - -hh * sin), y: this.y + (hw * sin + -hh * cos) },
+            { x: this.x + (hw * cos - hh * sin), y: this.y + (hw * sin + hh * cos) },
+            { x: this.x + (-hw * cos - hh * sin), y: this.y + (-hw * sin + hh * cos) }
+        ];
+    }
 }
 
 // ===========================================
@@ -606,6 +633,9 @@ class GameState {
 
         // Spin counter (lose if it reaches 0 with blocks remaining)
         this.spinsRemaining = 10;
+
+        // Points system
+        this.points = 0;
 
         // Slot machine state
         this.slotState = 'idle';
@@ -634,6 +664,7 @@ class GameState {
         this.arrowAngle = Math.PI / 2;  // Start pointing down
         this.arrowDirection = 1;
         this.spinsRemaining = 10;
+        this.points = 0;
         this.slotState = 'idle';
         this.slotReels = ['?', '?', '?'];
         this.slotStoppedCount = 0;
@@ -668,12 +699,10 @@ class Ball {
         this.color = color;
         this.type = type;
         this.baseRadius = this.getRadiusByType(type);
-        this.wallLives = this.getWallLivesByType(type);
-        this.maxWallLives = this.wallLives;
 
-        // Blue special: 3x speed + 2x size + breaks anything until first wall hit
+        // Blue special: 2x size + breaks walls once + instant kill blocks until wall/obstacle hit
         this.isBlue = color === 'blue';
-        this.bluePiercing = this.isBlue;  // Loses piercing after first wall hit
+        this.bluePiercing = this.isBlue;  // Loses piercing after hitting wall/obstacle
         if (this.isBlue) {
             this.baseRadius *= 2;  // Double size
         }
@@ -692,23 +721,21 @@ class Ball {
         this.vx = Math.cos(angle) * speed;
         this.vy = Math.sin(angle) * speed;
 
-        // Red special: AOE on first block break
+        // Red special: AOE on first block hit
         this.isRed = color === 'red';
         this.redAOEReady = this.isRed;  // Can only use AOE once
 
-        this.lastWallHitTime = Date.now();  // Grace period at spawn
         this.spawnTime = Date.now();
 
         // Trail for visual effect
         this.trail = [];
+
+        // Points accumulated by this ball (from block damage)
+        this.points = 0;
     }
 
-    // Dynamic radius based on remaining wall lives
     get radius() {
-        const minScale = 0.4;  // Ball shrinks to 40% of original at 1 life
-        const lifeRatio = this.wallLives / this.maxWallLives;
-        const scale = minScale + (1 - minScale) * lifeRatio;
-        return this.baseRadius * scale;
+        return this.baseRadius;
     }
 
     getRadiusByType(type) {
@@ -719,15 +746,6 @@ class Ball {
         }
     }
 
-    getWallLivesByType(type) {
-        switch(type) {
-            case 'big': return CONFIG.WALL_LIVES_BIG;
-            case 'medium': return CONFIG.WALL_LIVES_MEDIUM;
-            case 'rainball': return CONFIG.WALL_LIVES_RAINBALL;
-            default: return CONFIG.WALL_LIVES_NORMAL;
-        }
-    }
-
     update(canvasWidth, canvasHeight, audioManager) {
         // Store trail
         if (JUICE.TRAIL_ENABLED && !JUICE.PERFORMANCE_MODE) {
@@ -735,66 +753,54 @@ class Ball {
             if (this.trail.length > JUICE.TRAIL_LENGTH) this.trail.pop();
         }
 
+        // Apply gravity
+        this.vy += CONFIG.GRAVITY;
+
         this.x += this.vx;
         this.y += this.vy;
 
-        // Normalize speed
-        const targetSpeed = CONFIG.BALL_SPEED;
-        const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        if (Math.abs(currentSpeed - targetSpeed) > 0.1) {
-            const factor = targetSpeed / currentSpeed;
-            this.vx *= factor;
-            this.vy *= factor;
-        }
-
-        // Wall collisions
-        const now = Date.now();
-        let hitWall = false;
-
+        // Side wall collisions (left and right)
+        let hitOuterWall = false;
         if (this.x - this.radius < 0) {
             this.x = this.radius;
             this.vx = Math.abs(this.vx);
-            hitWall = true;
+            hitOuterWall = true;
         }
         if (this.x + this.radius > canvasWidth) {
             this.x = canvasWidth - this.radius;
             this.vx = -Math.abs(this.vx);
-            hitWall = true;
+            hitOuterWall = true;
         }
+
+        // Top wall collision
         if (this.y - this.radius < 0) {
             this.y = this.radius;
             this.vy = Math.abs(this.vy);
-            hitWall = true;
-        }
-        if (this.y + this.radius > canvasHeight) {
-            this.y = canvasHeight - this.radius;
-            this.vy = -Math.abs(this.vy);
-            hitWall = true;
+            hitOuterWall = true;
         }
 
-        // Deduct wall life on hit
-        if (hitWall && now - this.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
-            this.wallLives--;
-            this.lastWallHitTime = now;
-
-            // Blue special: lose piercing, slow down, and shrink after first wall hit
-            if (this.bluePiercing) {
-                this.bluePiercing = false;
-                // Slow down to normal speed
-                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        // Blue loses piercing on outer wall hit (with spawn grace period)
+        const timeSinceSpawn = Date.now() - this.spawnTime;
+        if (hitOuterWall && this.bluePiercing && timeSinceSpawn > 200) {
+            this.bluePiercing = false;
+            // Slow down to normal speed
+            const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            if (currentSpeed > CONFIG.BALL_SPEED) {
                 const factor = CONFIG.BALL_SPEED / currentSpeed;
                 this.vx *= factor;
                 this.vy *= factor;
-                // Shrink back to normal size
-                this.baseRadius = this.getRadiusByType(this.type);
             }
-
-            if (audioManager) {
-                audioManager.wallHit(this.wallLives, this.maxWallLives);
-            }
+            // Shrink back to normal size
+            this.baseRadius = this.getRadiusByType(this.type);
         }
 
-        return this.wallLives > 0;
+        // Bottom: no collision - balls fall into baskets
+        // Return false if ball went below screen (will be handled by basket system)
+        if (this.y - this.radius > canvasHeight) {
+            return false;  // Ball is off screen
+        }
+
+        return true;  // Ball still alive
     }
 
     // Returns damage amount (0 = no damage, just bounce)
@@ -1082,6 +1088,50 @@ function reflectVelocity(ball, nx, ny) {
     ball.vy = ball.vy - 2 * dot * ny;
 }
 
+// Collision detection for rotated rectangles (walls)
+function circleRotatedRectCollision(ball, wall) {
+    // Transform ball position into wall's local space
+    const cos = Math.cos(-wall.angle);
+    const sin = Math.sin(-wall.angle);
+
+    // Translate ball relative to wall center, then rotate
+    const dx = ball.x - wall.x;
+    const dy = ball.y - wall.y;
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+
+    // Now do normal rect collision in local space
+    const hw = wall.width / 2;
+    const hh = wall.height / 2;
+
+    const closestX = Math.max(-hw, Math.min(localX, hw));
+    const closestY = Math.max(-hh, Math.min(localY, hh));
+
+    const distX = localX - closestX;
+    const distY = localY - closestY;
+    const distance = Math.sqrt(distX * distX + distY * distY);
+
+    if (distance < ball.radius) {
+        // Calculate normal in local space
+        let nx = distance > 0 ? distX / distance : 0;
+        let ny = distance > 0 ? distY / distance : 1;
+
+        // Rotate normal back to world space
+        const cosBack = Math.cos(wall.angle);
+        const sinBack = Math.sin(wall.angle);
+        const worldNx = nx * cosBack - ny * sinBack;
+        const worldNy = nx * sinBack + ny * cosBack;
+
+        return {
+            hit: true,
+            nx: worldNx,
+            ny: worldNy,
+            penetration: ball.radius - distance
+        };
+    }
+    return { hit: false };
+}
+
 // ===========================================
 // RENDERER
 // ===========================================
@@ -1139,32 +1189,91 @@ class Renderer {
     }
 
     drawWall(wall) {
+        this.ctx.save();
+
+        // Move to wall center and rotate
+        this.ctx.translate(wall.x, wall.y);
+        this.ctx.rotate(wall.angle);
+
+        const hw = wall.width / 2;
+        const hh = wall.height / 2;
+
         // Dark wall with subtle gradient
-        const gradient = this.ctx.createLinearGradient(
-            wall.x, wall.y, wall.x + wall.width, wall.y + wall.height
-        );
+        const gradient = this.ctx.createLinearGradient(-hw, -hh, hw, hh);
         gradient.addColorStop(0, '#2a2a4a');
         gradient.addColorStop(0.5, '#3a3a5a');
         gradient.addColorStop(1, '#2a2a4a');
 
         this.ctx.fillStyle = gradient;
         this.ctx.beginPath();
-        this.roundRect(wall.x, wall.y, wall.width, wall.height, 4);
+        this.roundRect(-hw, -hh, wall.width, wall.height, 4);
         this.ctx.fill();
 
         // Border
         this.ctx.strokeStyle = 'rgba(100, 100, 140, 0.6)';
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
-        this.roundRect(wall.x, wall.y, wall.width, wall.height, 4);
+        this.roundRect(-hw, -hh, wall.width, wall.height, 4);
         this.ctx.stroke();
 
         // Inner highlight
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
         this.ctx.lineWidth = 1;
         this.ctx.beginPath();
-        this.roundRect(wall.x + 2, wall.y + 2, wall.width - 4, wall.height - 4, 3);
+        this.roundRect(-hw + 2, -hh + 2, wall.width - 4, wall.height - 4, 3);
         this.ctx.stroke();
+
+        // Draw cracks if damaged
+        if (wall.cracked) {
+            this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+            this.ctx.lineWidth = 2;
+            // Main crack lines (at center, which is 0,0 in local space)
+            this.ctx.beginPath();
+            this.ctx.moveTo(-8, -6);
+            this.ctx.lineTo(0, 0);
+            this.ctx.lineTo(6, -8);
+            this.ctx.moveTo(0, 0);
+            this.ctx.lineTo(-5, 7);
+            this.ctx.moveTo(0, 0);
+            this.ctx.lineTo(8, 5);
+            this.ctx.stroke();
+        }
+
+        this.ctx.restore();
+    }
+
+    drawBaskets() {
+        const basketHeight = 40;
+        const basketWidth = this.canvas.width / 5;
+        const y = this.canvas.height - basketHeight;
+        const multipliers = [0, 1, 3, 1, 0];  // void, x1, x3, x1, void
+        const colors = ['#1a1a2e', '#2d5a3d', '#5a2d5a', '#2d5a3d', '#1a1a2e'];
+        const labels = ['VOID', 'x1', 'x3', 'x1', 'VOID'];
+
+        for (let i = 0; i < 5; i++) {
+            const x = i * basketWidth;
+
+            // Basket background
+            const gradient = this.ctx.createLinearGradient(x, y, x, this.canvas.height);
+            gradient.addColorStop(0, colors[i]);
+            gradient.addColorStop(1, '#0a0a15');
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(x, y, basketWidth, basketHeight);
+
+            // Basket border
+            this.ctx.strokeStyle = multipliers[i] === 3 ? '#9b59b6' :
+                                   multipliers[i] === 1 ? '#27ae60' : '#333';
+            this.ctx.lineWidth = 2;
+            this.ctx.strokeRect(x, y, basketWidth, basketHeight);
+
+            // Label
+            this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillStyle = multipliers[i] === 3 ? '#e056fd' :
+                                 multipliers[i] === 1 ? '#2ecc71' : '#555';
+            this.ctx.fillText(labels[i], x + basketWidth / 2, y + basketHeight / 2);
+        }
     }
 
     drawBase(angle) {
@@ -1339,37 +1448,24 @@ class Renderer {
         this.ctx.lineWidth = 1.5;
         this.ctx.stroke();
 
-        // Wall lives indicator (arc segments around ball)
-        if (JUICE.LIVES_INDICATOR) {
-            const livesRatio = ball.wallLives / ball.maxWallLives;
-            const indicatorRadius = ball.radius + 4;
+        // Show accumulated points above ball (grows with bigger numbers)
+        if (ball.points > 0) {
+            // Scale font size based on points (12px base, grows up to ~24px)
+            const baseSize = 12;
+            const scale = Math.min(2, 1 + Math.log10(ball.points + 1) * 0.4);
+            const fontSize = Math.round(baseSize * scale);
+            const textY = ball.y - ball.radius - 8 - fontSize / 2;
 
-            // Background arc
-            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-            this.ctx.lineWidth = 2;
-            this.ctx.beginPath();
-            this.ctx.arc(ball.x, ball.y, indicatorRadius, 0, Math.PI * 2);
-            this.ctx.stroke();
-
-            // Lives arc
-            if (livesRatio > 0) {
-                const startAngle = -Math.PI / 2;
-                const endAngle = startAngle + (Math.PI * 2 * livesRatio);
-
-                // Color based on remaining lives
-                if (livesRatio > 0.5) {
-                    this.ctx.strokeStyle = '#00d2d3';
-                } else if (livesRatio > 0.25) {
-                    this.ctx.strokeStyle = '#ffc312';
-                } else {
-                    this.ctx.strokeStyle = '#ff4757';
-                }
-
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.arc(ball.x, ball.y, indicatorRadius, startAngle, endAngle);
-                this.ctx.stroke();
-            }
+            this.ctx.font = `bold ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            // Dark outline
+            this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+            this.ctx.lineWidth = 3;
+            this.ctx.strokeText(ball.points, ball.x, textY);
+            // White text
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fillText(ball.points, ball.x, textY);
         }
     }
 
@@ -1465,6 +1561,9 @@ class Renderer {
         this.clear();
         this.rainbowHue = (this.rainbowHue + 2) % 360;
 
+        // Draw baskets at bottom
+        this.drawBaskets();
+
         // Draw walls (obstacles)
         for (const wall of this.gameState.walls) {
             this.drawWall(wall);
@@ -1488,18 +1587,22 @@ class Renderer {
             this.drawBall(ball);
         }
 
-        // Draw damage texts
+        // Draw damage/points texts
         for (const dt of this.gameState.damageTexts) {
             const alpha = dt.life / dt.maxLife;
             this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
+
+            const text = dt.isPoints ? dt.damage : `-${dt.damage}`;
+            const color = dt.isPoints ? `rgba(46, 204, 113, ${alpha})` : `rgba(255, 80, 80, ${alpha})`;
+
             // Shadow
             this.ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.7})`;
-            this.ctx.fillText(`-${dt.damage}`, dt.x + 1, dt.y + 1);
-            // Red text
-            this.ctx.fillStyle = `rgba(255, 80, 80, ${alpha})`;
-            this.ctx.fillText(`-${dt.damage}`, dt.x, dt.y);
+            this.ctx.fillText(text, dt.x + 1, dt.y + 1);
+            // Colored text
+            this.ctx.fillStyle = color;
+            this.ctx.fillText(text, dt.x, dt.y);
         }
 
         this.ctx.restore();
@@ -1547,42 +1650,64 @@ function generateLevel(gameState, canvasWidth, canvasHeight) {
     const baseClearRadius = 80;  // Keep area around base clear for shooting
 
     // Generate walls first
-    const wallCount = 6 + Math.floor(Math.random() * 4);  // 6-9 walls
-    const wallPadding = 15;  // Space around walls
+    const wallCount = 5 + Math.floor(Math.random() * 4);  // 5-8 walls
+    const wallPadding = 30;  // Space around walls
+    const basketHeight = 40;  // Keep clear of baskets
 
-    function isValidWallPosition(x, y, w, h) {
+    function isValidWallPosition(cx, cy, w, h, angle) {
         // Check distance from base
-        const cx = x + w / 2;
-        const cy = y + h / 2;
         const dx = cx - baseX;
         const dy = cy - baseY;
-        if (Math.sqrt(dx * dx + dy * dy) < baseClearRadius + Math.max(w, h) / 2) return false;
+        const maxDim = Math.max(w, h);
+        if (Math.sqrt(dx * dx + dy * dy) < baseClearRadius + maxDim / 2) return false;
 
-        // Check against other walls
+        // Check not too close to basket area
+        if (cy + maxDim / 2 > canvasHeight - basketHeight - 20) return false;
+
+        // Check against other walls (simple center distance check)
         for (const wall of gameState.walls) {
-            if (x < wall.x + wall.width + wallPadding &&
-                x + w + wallPadding > wall.x &&
-                y < wall.y + wall.height + wallPadding &&
-                y + h + wallPadding > wall.y) {
-                return false;
-            }
+            const dist = Math.sqrt((cx - wall.x) ** 2 + (cy - wall.y) ** 2);
+            const minDist = (maxDim + Math.max(wall.width, wall.height)) / 2 + wallPadding;
+            if (dist < minDist) return false;
         }
         return true;
     }
 
     let wallAttempts = 0;
-    while (gameState.walls.length < wallCount && wallAttempts < 100) {
+    while (gameState.walls.length < wallCount && wallAttempts < 150) {
         wallAttempts++;
-        // Random wall size
-        const isHorizontal = Math.random() > 0.5;
-        const wallWidth = isHorizontal ? 60 + Math.random() * 80 : 15 + Math.random() * 10;
-        const wallHeight = isHorizontal ? 15 + Math.random() * 10 : 60 + Math.random() * 80;
 
-        const x = margin + Math.random() * (canvasWidth - 2 * margin - wallWidth);
-        const y = margin + 50 + Math.random() * (canvasHeight - 2 * margin - wallHeight - 50);
+        // Varied wall sizes
+        const sizeType = Math.random();
+        let wallWidth, wallHeight;
 
-        if (isValidWallPosition(x, y, wallWidth, wallHeight)) {
-            gameState.walls.push(new Wall(x, y, wallWidth, wallHeight));
+        if (sizeType < 0.3) {
+            // Long thin wall
+            wallWidth = 80 + Math.random() * 60;
+            wallHeight = 12 + Math.random() * 8;
+        } else if (sizeType < 0.6) {
+            // Medium wall
+            wallWidth = 50 + Math.random() * 40;
+            wallHeight = 15 + Math.random() * 15;
+        } else if (sizeType < 0.8) {
+            // Small square-ish
+            wallWidth = 25 + Math.random() * 25;
+            wallHeight = 20 + Math.random() * 20;
+        } else {
+            // Thick short
+            wallWidth = 30 + Math.random() * 30;
+            wallHeight = 25 + Math.random() * 15;
+        }
+
+        // Random angle (including diagonal)
+        const angle = (Math.random() - 0.5) * Math.PI * 0.8;  // -72 to +72 degrees
+
+        const maxDim = Math.max(wallWidth, wallHeight);
+        const cx = margin + maxDim / 2 + Math.random() * (canvasWidth - 2 * margin - maxDim);
+        const cy = margin + 60 + Math.random() * (canvasHeight - margin - 60 - basketHeight - maxDim);
+
+        if (isValidWallPosition(cx, cy, wallWidth, wallHeight, angle)) {
+            gameState.walls.push(new Wall(cx, cy, wallWidth, wallHeight, angle));
         }
     }
 
@@ -1595,19 +1720,22 @@ function generateLevel(gameState, canvasWidth, canvasHeight) {
     }
 
     function isValidBlockPosition(x, y) {
+        const blockCenterX = x + blockSize / 2;
+        const blockCenterY = y + blockSize / 2;
+
         // Check distance from base
-        const dx = (x + blockSize / 2) - baseX;
-        const dy = (y + blockSize / 2) - baseY;
+        const dx = blockCenterX - baseX;
+        const dy = blockCenterY - baseY;
         if (Math.sqrt(dx * dx + dy * dy) < baseClearRadius) return false;
 
-        // Check against walls
+        // Check not in basket area
+        if (y + blockSize > canvasHeight - basketHeight - 10) return false;
+
+        // Check against walls (center-based, with buffer for rotation)
         for (const wall of gameState.walls) {
-            if (x < wall.x + wall.width + padding &&
-                x + blockSize + padding > wall.x &&
-                y < wall.y + wall.height + padding &&
-                y + blockSize + padding > wall.y) {
-                return false;
-            }
+            const dist = Math.sqrt((blockCenterX - wall.x) ** 2 + (blockCenterY - wall.y) ** 2);
+            const minDist = (blockSize + Math.max(wall.width, wall.height)) / 2 + padding;
+            if (dist < minDist) return false;
         }
 
         // Check against other blocks
@@ -1672,7 +1800,7 @@ class Game {
         this.spacebarHint = document.getElementById('spacebar-hint');
         this.actionLabel = document.getElementById('action-label');
         this.spinCountEl = document.getElementById('spin-count');
-        this.blockCountEl = document.getElementById('block-count');
+        this.pointsCountEl = document.getElementById('points-count');
         this.overlay = document.getElementById('overlay');
         this.overlayTitle = document.getElementById('overlay-title');
         this.overlayMessage = document.getElementById('overlay-message');
@@ -1849,25 +1977,66 @@ class Game {
         }
     }
 
+    processBaskets() {
+        const basketHeight = 40;
+        const basketWidth = this.canvas.width / 5;
+        const basketY = this.canvas.height - basketHeight;
+        const multipliers = [0, 1, 3, 1, 0];  // void, x1, x3, x1, void
+
+        // Check each ball
+        this.gameState.balls = this.gameState.balls.filter(ball => {
+            // Check if ball entered basket zone
+            if (ball.y + ball.radius >= basketY) {
+                // Determine which basket
+                const basketIndex = Math.floor(ball.x / basketWidth);
+                const clampedIndex = Math.max(0, Math.min(4, basketIndex));
+                const multiplier = multipliers[clampedIndex];
+
+                // Add points (ball.points * multiplier)
+                const earnedPoints = ball.points * multiplier;
+                if (earnedPoints > 0) {
+                    this.gameState.points += earnedPoints;
+                    // Show floating points text
+                    this.gameState.damageTexts.push({
+                        x: ball.x,
+                        y: basketY - 20,
+                        damage: `+${earnedPoints}`,
+                        life: 800,
+                        maxLife: 800,
+                        isPoints: true
+                    });
+                    this.audio.blockBreak();
+                }
+
+                // Particles for basket entry
+                const color = multiplier === 3 ? '#e056fd' :
+                              multiplier === 1 ? '#2ecc71' : '#555';
+                this.particles.emit(ball.x, basketY, color, 10);
+
+                return false;  // Remove ball
+            }
+            return true;  // Keep ball
+        });
+    }
+
     processBallWallCollisions() {
-        const now = Date.now();
         for (const ball of this.gameState.balls) {
             for (const wall of this.gameState.walls) {
-                const collision = circleRectCollision(ball, wall);
+                if (wall.hp <= 0) continue;  // Skip destroyed walls
+
+                const collision = circleRotatedRectCollision(ball, wall);
                 if (collision.hit) {
                     reflectVelocity(ball, collision.nx, collision.ny);
                     ball.x += collision.nx * collision.penetration;
                     ball.y += collision.ny * collision.penetration;
 
-                    // Deduct wall life (same as screen walls)
-                    if (now - ball.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
-                        ball.wallLives--;
-                        ball.lastWallHitTime = now;
-                        this.audio.wallHit(ball.wallLives, ball.maxWallLives);
-                    }
-
-                    // Blue special: lose piercing, slow down, and shrink on wall hit
+                    // Blue special: break wall once before losing piercing
                     if (ball.bluePiercing) {
+                        const destroyed = wall.takeDamage();
+                        if (destroyed) {
+                            this.particles.emit(wall.centerX, wall.centerY, '#5a5a7a', 15);
+                            this.audio.blockBreak();
+                        }
                         ball.bluePiercing = false;
                         // Slow down to normal speed
                         const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
@@ -1880,6 +2049,9 @@ class Game {
                 }
             }
         }
+
+        // Remove destroyed walls
+        this.gameState.walls = this.gameState.walls.filter(w => w.hp > 0);
     }
 
     processBallBlockCollisions() {
@@ -1896,12 +2068,18 @@ class Game {
                         // Red special: AOE explosion on first hit (any block)
                         if (ball.redAOEReady) {
                             ball.redAOEReady = false;
-                            this.triggerRedAOE(block.centerX, block.centerY);
+                            this.triggerRedAOE(block.centerX, block.centerY, ball);
                         }
 
+                        // Skip if block was already destroyed by AOE
+                        if (block.hp <= 0) continue;
+
                         // Show damage text (cap display at actual HP for instant kills)
-                        const actualDamage = Math.min(damage, block.hp);
+                        const actualDamage = Math.max(0, Math.min(damage, block.hp));
                         this.spawnDamageText(block.centerX, block.y, actualDamage);
+
+                        // Accumulate points on the ball
+                        ball.points += actualDamage;
 
                         const destroyed = block.takeDamage(damage);
 
@@ -1949,7 +2127,7 @@ class Game {
     }
 
     // Red AOE: destroy all blocks within radius
-    triggerRedAOE(x, y) {
+    triggerRedAOE(x, y, ball) {
         const aoeRadius = 130;  // Explosion radius in pixels
 
         // Big shake and effects for AOE
@@ -1968,13 +2146,39 @@ class Game {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance <= aoeRadius) {
-                this.spawnDamageText(block.centerX, block.y, block.hp);  // Show actual HP as damage
+                const actualDamage = block.hp;  // Full HP as points
+                this.spawnDamageText(block.centerX, block.y, actualDamage);
+
+                // Accumulate points to the ball that triggered explosion
+                if (ball) {
+                    ball.points += actualDamage;
+                }
+
                 block.takeDamage(999);  // Instant kill
                 this.particles.emit(block.centerX, block.centerY, CONFIG.COLORS.RED, JUICE.PARTICLE_BLOCK_BREAK);
                 this.audio.blockBreak();
                 this.combo.addBreak();
             }
         }
+
+        // Damage walls in radius (1 damage per explosion)
+        for (const wall of this.gameState.walls) {
+            if (wall.hp <= 0) continue;
+
+            const dx = wall.centerX - x;
+            const dy = wall.centerY - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= aoeRadius) {
+                const destroyed = wall.takeDamage();
+                if (destroyed) {
+                    this.particles.emit(wall.centerX, wall.centerY, '#5a5a7a', 15);
+                }
+            }
+        }
+
+        // Remove destroyed walls
+        this.gameState.walls = this.gameState.walls.filter(w => w.hp > 0);
     }
 
     spawnDamageText(x, y, damage) {
@@ -2095,6 +2299,7 @@ class Game {
         this.gameState.blocks = this.gameState.blocks.filter(b => !b.isDestroyed);
 
         // Process collisions
+        this.processBaskets();
         this.processBallWallCollisions();
         this.processBallBlockCollisions();
 
@@ -2148,11 +2353,7 @@ class Game {
 
     updateUI() {
         this.spinCountEl.textContent = `${this.gameState.spinsRemaining}`;
-
-        const remaining = CONFIG.WIN_REQUIRES_ALL_BLOCKS
-            ? this.gameState.remainingBlocks
-            : this.gameState.remainingColoredBlocks;
-        this.blockCountEl.textContent = remaining.toString();
+        this.pointsCountEl.textContent = `${this.gameState.points}`;
 
         // Action label
         if (this.gameState.slotState === 'idle') {
@@ -2193,7 +2394,10 @@ class Game {
         this.overlay.classList.remove('hidden');
         this.overlayTitle.className = won ? 'win' : 'lose';
         this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'GAME OVER';
-        this.overlayMessage.textContent = won ? 'All blocks destroyed!' : 'Out of spins!';
+        const points = this.gameState.points;
+        this.overlayMessage.textContent = won
+            ? `Final Score: ${points} points!`
+            : `Score: ${points} points - Out of spins!`;
     }
 
     hideOverlay() {
