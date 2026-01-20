@@ -770,13 +770,20 @@ class Ball {
         return this.type === 'mother' || this.wallLives > 0;
     }
 
+    // Returns damage amount (0 = no damage, just bounce)
+    getDamage(block) {
+        if (this.color === 'white') return 0;  // Mother ball just bounces
+        if (this.color === 'rainbow') return 5;  // Rainbow always full damage
+        if (this.bluePiercing) return 5;  // Blue piercing = full damage
+        // Same color or neutral = 5 damage, different color = 1 damage
+        if (block.color === 'neutral' || block.color === this.color) {
+            return 5;
+        }
+        return 1;
+    }
+
     canDamage(block) {
-        if (this.color === 'rainbow') return true;
-        if (this.color === 'white') return false;  // Mother ball just bounces, no damage
-        if (block.color === 'neutral') return true;
-        // Blue special: piercing mode breaks ANY block
-        if (this.bluePiercing) return true;
-        return this.color === block.color;
+        return this.getDamage(block) > 0;
     }
 
     getDisplayColor() {
@@ -796,15 +803,16 @@ class Block {
         this.width = size;
         this.height = size;
         this.color = color;
-        this.hp = CONFIG.BLOCK_DEFAULT_HP;
+        // Random HP between 5-10
+        this.hp = 5 + Math.floor(Math.random() * 6);
         this.maxHp = this.hp;
         this.hitFlash = 0;
         this.breaking = false;
         this.breakProgress = 0;
     }
 
-    takeDamage() {
-        this.hp--;
+    takeDamage(amount = 1) {
+        this.hp -= amount;
         this.hitFlash = 1;
         if (this.hp <= 0) {
             this.breaking = true;
@@ -1105,26 +1113,30 @@ class Renderer {
     drawMotherBallIndicator(motherBall, angle) {
         if (!motherBall) return;
 
-        const lineLength = 35;
-        const endX = motherBall.x + Math.cos(angle) * lineLength;
-        const endY = motherBall.y + Math.sin(angle) * lineLength;
+        // Calculate line endpoint at wall
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
 
-        // Glow line
-        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.4)';
-        this.ctx.lineWidth = 6;
+        // Find distance to each wall and pick the closest
+        let dist = Infinity;
+        if (cos > 0) dist = Math.min(dist, (this.canvas.width - motherBall.x) / cos);
+        if (cos < 0) dist = Math.min(dist, -motherBall.x / cos);
+        if (sin > 0) dist = Math.min(dist, (this.canvas.height - motherBall.y) / sin);
+        if (sin < 0) dist = Math.min(dist, -motherBall.y / sin);
+
+        const endX = motherBall.x + cos * dist;
+        const endY = motherBall.y + sin * dist;
+
+        // Dashed line to wall
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([8, 6]);
         this.ctx.lineCap = 'round';
         this.ctx.beginPath();
         this.ctx.moveTo(motherBall.x, motherBall.y);
         this.ctx.lineTo(endX, endY);
         this.ctx.stroke();
-
-        // Main line
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.moveTo(motherBall.x, motherBall.y);
-        this.ctx.lineTo(endX, endY);
-        this.ctx.stroke();
+        this.ctx.setLineDash([]);  // Reset dash
     }
 
     drawBall(ball) {
@@ -1329,6 +1341,21 @@ class Renderer {
         this.ctx.beginPath();
         this.roundRect(block.x, block.y, block.width, block.height, 6);
         this.ctx.stroke();
+
+        // HP number
+        if (block.hp > 0) {
+            const cx = block.x + block.width / 2;
+            const cy = block.y + block.height / 2;
+            this.ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            // Shadow for readability
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            this.ctx.fillText(block.hp, cx + 1, cy + 1);
+            // White text
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fillText(block.hp, cx, cy);
+        }
 
         this.ctx.restore();
     }
@@ -1686,10 +1713,10 @@ class Game {
                 const collision = circleRectCollision(ball, block);
 
                 if (collision.hit) {
-                    const canDamage = ball.canDamage(block);
+                    const damage = ball.getDamage(block);
 
-                    if (canDamage) {
-                        const destroyed = block.takeDamage();
+                    if (damage > 0) {
+                        const destroyed = block.takeDamage(damage);
 
                         if (destroyed) {
                             // Block break effects
