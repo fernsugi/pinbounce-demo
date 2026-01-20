@@ -1510,6 +1510,32 @@ class Renderer {
         this.ctx.stroke();
 
         this.ctx.shadowBlur = 0;
+
+        // Draw pending skill indicator
+        if (this.gameState.pendingSkill) {
+            const skillNames = {
+                'explosion': 'BOMB',
+                'bulldoze': 'BULLDOZE',
+                'split': 'SPLIT'
+            };
+            const skillColors = {
+                'explosion': '#ff4757',
+                'bulldoze': '#3498db',
+                'split': '#2ecc71'
+            };
+            const skillName = skillNames[this.gameState.pendingSkill] || this.gameState.pendingSkill.toUpperCase();
+            const skillColor = skillColors[this.gameState.pendingSkill] || '#ffd700';
+
+            // Draw below base
+            this.ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'top';
+            this.ctx.fillStyle = skillColor;
+            this.ctx.shadowColor = skillColor;
+            this.ctx.shadowBlur = 8;
+            this.ctx.fillText(`NEXT: ${skillName}`, baseX, baseY + baseHeight + 8);
+            this.ctx.shadowBlur = 0;
+        }
     }
 
     drawBall(ball) {
