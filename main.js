@@ -651,6 +651,9 @@ class GameState {
         // Basket order (shuffled each game)
         this.basketOrder = [0, 1, 2, 3, 4];  // Will be shuffled on reset
 
+        // Pending skill (for next shot if skill wheel won with no balls)
+        this.pendingSkill = null;
+
         // Debug stats
         this.debugStats = {
             totalSpins: 0,
@@ -679,6 +682,7 @@ class GameState {
         this.slotStoppedCount = 0;
         this.skillWheelState = 'idle';
         this.skillWheelCooldown = 0;
+        this.pendingSkill = null;
         // Shuffle basket order
         this.basketOrder = [0, 1, 2, 3, 4];
         for (let i = this.basketOrder.length - 1; i > 0; i--) {
@@ -2121,6 +2125,10 @@ class Game {
         const angle = Math.PI / 2;  // Always shoot straight down
         const isRainbow = color === 'rainbow';
 
+        // Check for pending skill from previous skill wheel
+        const pendingSkill = this.gameState.pendingSkill;
+        this.gameState.pendingSkill = null;  // Clear it now
+
         // Delay between ball spawns (ms)
         const spawnDelay = 150;
 
@@ -2135,6 +2143,16 @@ class Game {
 
                 const ballType = isRainbow ? 'rainball' : 'normal';
                 const ball = new Ball(cx, cy, color, ballType, ballAngle);
+
+                // Apply pending skill if any
+                if (pendingSkill === 'explosion') {
+                    ball.hasExplosion = true;
+                } else if (pendingSkill === 'bulldoze') {
+                    ball.hasBulldoze = true;
+                    ball.baseRadius *= 2;
+                }
+                // Split doesn't make sense for new spawns, skip it
+
                 this.gameState.balls.push(ball);
                 this.gameState.isRunning = true;
 
@@ -2197,7 +2215,7 @@ class Game {
                 }
 
                 // Trigger skill wheel on SKILL basket (multiplier === 0)
-                if (multiplier === 0 && this.gameState.balls.length > 1) {
+                if (multiplier === 0) {
                     triggerSkillWheel = true;
                 }
 
@@ -2211,9 +2229,9 @@ class Game {
             return true;  // Keep ball
         });
 
-        // Show skill wheel if triggered (and there are still balls on screen, and cooldown passed)
+        // Show skill wheel if triggered (cooldown must have passed)
         const cooldownPassed = Date.now() > this.gameState.skillWheelCooldown;
-        if (triggerSkillWheel && this.gameState.balls.length > 0 && this.gameState.skillWheelState === 'idle' && cooldownPassed) {
+        if (triggerSkillWheel && this.gameState.skillWheelState === 'idle' && cooldownPassed) {
             this.skillWheel.show();
         }
     }
@@ -2399,6 +2417,12 @@ class Game {
 
     applySkillToAllBalls(skill) {
         if (!skill) return;  // MISS - no skill applied
+
+        // If no balls on screen, save as pending for next shot
+        if (this.gameState.balls.length === 0) {
+            this.gameState.pendingSkill = skill;
+            return;
+        }
 
         // Copy current balls array to avoid infinite loop when adding new balls
         const currentBalls = [...this.gameState.balls];
