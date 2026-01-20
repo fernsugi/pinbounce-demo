@@ -1094,33 +1094,26 @@ class Renderer {
     drawMotherBallIndicator(motherBall, angle) {
         if (!motherBall) return;
 
-        const orbitRadius = 25;
-        const arcLength = 0.8;  // radians (~45 degrees)
+        const lineLength = 35;
+        const endX = motherBall.x + Math.cos(angle) * lineLength;
+        const endY = motherBall.y + Math.sin(angle) * lineLength;
 
-        // Outer glow arc
-        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.3)';
-        this.ctx.lineWidth = 10;
+        // Glow line
+        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.4)';
+        this.ctx.lineWidth = 6;
         this.ctx.lineCap = 'round';
         this.ctx.beginPath();
-        this.ctx.arc(motherBall.x, motherBall.y, orbitRadius,
-                     angle - arcLength/2, angle + arcLength/2);
+        this.ctx.moveTo(motherBall.x, motherBall.y);
+        this.ctx.lineTo(endX, endY);
         this.ctx.stroke();
 
-        // Main arc
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-        this.ctx.lineWidth = 4;
+        // Main line
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.lineWidth = 2;
         this.ctx.beginPath();
-        this.ctx.arc(motherBall.x, motherBall.y, orbitRadius,
-                     angle - arcLength/2, angle + arcLength/2);
+        this.ctx.moveTo(motherBall.x, motherBall.y);
+        this.ctx.lineTo(endX, endY);
         this.ctx.stroke();
-
-        // Small dot at the leading edge of the arc (aim point)
-        const dotX = motherBall.x + Math.cos(angle) * orbitRadius;
-        const dotY = motherBall.y + Math.sin(angle) * orbitRadius;
-        this.ctx.fillStyle = 'rgba(0, 210, 211, 0.9)';
-        this.ctx.beginPath();
-        this.ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
-        this.ctx.fill();
     }
 
     drawBall(ball) {
@@ -1670,7 +1663,12 @@ class Game {
     }
 
     processBallBlockCollisions() {
-        for (const ball of this.gameState.balls) {
+        // Include mother ball in collision processing
+        const allBalls = this.gameState.motherBall
+            ? [this.gameState.motherBall, ...this.gameState.balls]
+            : this.gameState.balls;
+
+        for (const ball of allBalls) {
             for (const block of this.gameState.blocks) {
                 if (block.hp <= 0) continue;
 
@@ -1817,18 +1815,18 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
-        // Mother ball ALWAYS bounces (even during slot spinning)
-        if (this.gameState.motherBall) {
-            this.gameState.motherBall.update(this.canvas.width, this.canvas.height, null);
-        }
-
         // Rotate indicator around mother ball (always, even during slot)
         this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
 
-        // Pause other game logic while slot is active
+        // Pause game while slot is active (mother ball stops too)
         if (this.gameState.slotState !== 'idle') {
             this.updateUI();
             return;
+        }
+
+        // Update mother ball (only when not spinning slot)
+        if (this.gameState.motherBall) {
+            this.gameState.motherBall.update(this.canvas.width, this.canvas.height, null);
         }
 
         // Check for slow-motion trigger
