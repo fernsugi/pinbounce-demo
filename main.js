@@ -1551,7 +1551,8 @@ class Renderer {
             // Dim SKILL baskets when on cooldown
             const isSkillBasket = multiplier === 0;
             if (isSkillBasket && skillOnCooldown) {
-                color = '#1a1a2a';  // Dimmed color
+                color = '#1a1a1a';  // Very dark
+                label = '---';  // Show cooldown indicator
             }
 
             // Basket background
@@ -1565,7 +1566,7 @@ class Renderer {
             let borderColor = multiplier === 3 ? '#9b59b6' :
                               multiplier === 1 ? '#27ae60' : '#5555aa';
             if (isSkillBasket && skillOnCooldown) {
-                borderColor = '#333355';  // Dimmed border
+                borderColor = '#222222';  // Very dark border
             }
             this.ctx.strokeStyle = borderColor;
             this.ctx.lineWidth = 2;
@@ -1578,7 +1579,7 @@ class Renderer {
             let labelColor = multiplier === 3 ? '#e056fd' :
                              multiplier === 1 ? '#2ecc71' : '#8888ff';
             if (isSkillBasket && skillOnCooldown) {
-                labelColor = '#444466';  // Dimmed label
+                labelColor = '#333333';  // Very dim label
             }
             this.ctx.fillStyle = labelColor;
             this.ctx.fillText(label, x + basketWidth / 2, y + basketHeight / 2);
