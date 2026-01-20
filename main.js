@@ -2785,15 +2785,6 @@ class Game {
             return alive;
         });
 
-        // Bonus points for bounces when no blocks left (small reward for waiting)
-        if (this.gameState.remainingBlocks === 0) {
-            for (const ball of this.gameState.balls) {
-                if (ball.hitWallThisFrame) {
-                    this.gameState.points += 1;
-                }
-            }
-        }
-
         // Update blocks
         for (const block of this.gameState.blocks) {
             block.update();
@@ -2804,6 +2795,15 @@ class Game {
         this.processBaskets();
         this.processBallWallCollisions();
         this.processBallBlockCollisions();
+
+        // Bonus points for bounces when no blocks left (after wall collisions are processed)
+        if (this.gameState.remainingBlocks === 0) {
+            for (const ball of this.gameState.balls) {
+                if (ball.hitWallThisFrame) {
+                    this.gameState.points += 1;
+                }
+            }
+        }
 
         // Update particles
         this.particles.update(dt);
