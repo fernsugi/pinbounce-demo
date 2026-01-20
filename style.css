@@ -358,6 +358,84 @@ button:active {
     letter-spacing: 1px;
 }
 
+/* Skill Wheel Overlay */
+#skill-wheel-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 55;
+    backdrop-filter: blur(4px);
+}
+
+#skill-wheel-overlay.hidden {
+    display: none;
+}
+
+#skill-wheel-container {
+    text-align: center;
+    padding: 30px;
+    animation: slotSlideIn 0.2s ease-out;
+}
+
+#skill-wheel-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffd700;
+    letter-spacing: 4px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+#skill-wheel {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 15px;
+}
+
+#skill-wheel-pointer {
+    position: absolute;
+    top: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 2rem;
+    color: #ffd700;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+    z-index: 10;
+}
+
+#skill-wheel-canvas {
+    border-radius: 50%;
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+}
+
+#skill-wheel-result {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #00d2d3;
+    min-height: 30px;
+    margin-bottom: 10px;
+}
+
+#skill-wheel-result.miss {
+    color: #ff4757;
+}
+
+#skill-wheel-result.skill {
+    color: #2ecc71;
+}
+
+#skill-wheel-hint {
+    font-size: 0.8rem;
+    color: #666;
+    letter-spacing: 1px;
+}
+
 /* Game Over Overlay */
 #overlay {
     position: absolute;

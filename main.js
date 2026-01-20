@@ -31,9 +31,10 @@ const CONFIG = {
     BALL_BOOST_MULTIPLIER: 2.5,  // Initial speed boost (lost on first wall hit)
     GRAVITY: 0.05,  // Downward acceleration per frame
 
-    // Base (spawn point) position - top center (X is calculated dynamically)
+    // Base (spawn point) - moves left/right at top
     BASE_Y: 0,
     BASE_RADIUS: 20,
+    BASE_SPEED: 3,  // Horizontal movement speed
 
     // Anti-frustration grace period (ms)
     WALL_HIT_GRACE_PERIOD: 200,
@@ -627,9 +628,9 @@ class GameState {
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
-        // Indicator angle: oscillates between 0 (right) and π (left) - full 180°
-        this.arrowAngle = Math.PI / 2;  // Start pointing down
-        this.arrowDirection = 1;  // 1 = towards left, -1 = towards right
+        // Base position: moves left/right at top of screen
+        this.baseX = 0;  // Will be set to canvas center on init
+        this.baseDirection = 1;  // 1 = moving right, -1 = moving left
         this.damageTexts = [];  // Floating damage numbers
 
         // Spin counter (lose if it reaches 0 with blocks remaining)
@@ -642,6 +643,9 @@ class GameState {
         this.slotState = 'idle';
         this.slotReels = ['?', '?', '?'];
         this.slotStoppedCount = 0;
+
+        // Skill wheel state
+        this.skillWheelState = 'idle';  // idle, ready, spinning, result
 
         // Debug stats
         this.debugStats = {
@@ -662,13 +666,14 @@ class GameState {
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
-        this.arrowAngle = Math.PI / 2;  // Start pointing down
-        this.arrowDirection = 1;
+        // baseX will be set to canvas center by Game.init()
+        this.baseDirection = 1;
         this.spinsRemaining = 10;
         this.points = 0;
         this.slotState = 'idle';
         this.slotReels = ['?', '?', '?'];
         this.slotStoppedCount = 0;
+        this.skillWheelState = 'idle';
     }
 
     get activeBallCount() {
@@ -701,23 +706,9 @@ class Ball {
         this.type = type;
         this.baseRadius = this.getRadiusByType(type);
 
-        // Blue special: 2x size + breaks walls once + instant kill blocks until wall/obstacle hit
-        this.isBlue = color === 'blue';
-        this.bluePiercing = this.isBlue;  // Loses piercing after hitting wall/obstacle
-        if (this.isBlue) {
-            this.baseRadius *= 2;  // Double size
-        }
-
-        // Calculate speed based on ball type
+        // Calculate speed (rainbow is faster)
         const isRainbow = color === 'rainbow';
-        let baseSpeed;
-        if (this.isBlue) {
-            baseSpeed = CONFIG.BALL_SPEED * 1.5;  // Blue slightly faster
-        } else if (isRainbow) {
-            baseSpeed = CONFIG.BALL_SPEED * 2;    // Rainbow faster
-        } else {
-            baseSpeed = CONFIG.BALL_SPEED;
-        }
+        let baseSpeed = isRainbow ? CONFIG.BALL_SPEED * 2 : CONFIG.BALL_SPEED;
 
         // Apply initial speed boost
         this.normalSpeed = baseSpeed;
@@ -727,10 +718,6 @@ class Ball {
         this.vx = Math.cos(angle) * boostedSpeed;
         this.vy = Math.sin(angle) * boostedSpeed;
 
-        // Red special: AOE on first block hit
-        this.isRed = color === 'red';
-        this.redAOEReady = this.isRed;  // Can only use AOE once
-
         this.spawnTime = Date.now();
 
         // Trail for visual effect
@@ -738,6 +725,10 @@ class Ball {
 
         // Points accumulated by this ball (from block damage)
         this.points = 0;
+
+        // Skill wheel abilities (applied to all balls when triggered)
+        this.hasBulldoze = false;  // Pierces through blocks
+        this.hasExplosion = false; // Explodes on hit
     }
 
     get radius() {
@@ -799,19 +790,9 @@ class Ball {
             }
         }
 
-        // Blue loses piercing on outer wall hit (with spawn grace period)
-        if (hitOuterWall && this.bluePiercing && timeSinceSpawn > 200) {
-            this.bluePiercing = false;
-            // Slow down to normal (non-blue) speed
-            this.normalSpeed = CONFIG.BALL_SPEED;
-            const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-            if (currentSpeed > this.normalSpeed) {
-                const factor = this.normalSpeed / currentSpeed;
-                this.vx *= factor;
-                this.vy *= factor;
-            }
-            // Shrink back to normal size
-            this.baseRadius = this.getRadiusByType(this.type);
+        // Bulldoze ability lost on outer wall hit (with spawn grace period)
+        if (hitOuterWall && this.hasBulldoze && timeSinceSpawn > 200) {
+            this.hasBulldoze = false;
         }
 
         // Bottom: no collision - balls fall into baskets
@@ -826,7 +807,7 @@ class Ball {
     // Returns damage amount (0 = no damage, just bounce)
     getDamage(block) {
         if (this.color === 'rainbow') return 999;  // Rainbow instant kill
-        if (this.bluePiercing) return 999;  // Blue bulldoze instant kill
+        if (this.hasBulldoze) return 999;  // Bulldoze instant kill
         // Same color or neutral = 5 damage, different color = 1 damage
         if (block.color === 'neutral' || block.color === this.color) {
             return 5;
@@ -1081,6 +1062,178 @@ class SlotMachine {
 }
 
 // ===========================================
+// SKILL WHEEL
+// ===========================================
+
+class SkillWheel {
+    constructor(gameState, audioManager) {
+        this.gameState = gameState;
+        this.audio = audioManager;
+
+        // Wheel segments: 3 skills + 3 misses
+        this.segments = [
+            { name: 'BOMB', color: '#ff4757', skill: 'explosion' },
+            { name: 'MISS', color: '#333', skill: null },
+            { name: 'SPLIT', color: '#ffc312', skill: 'split' },
+            { name: 'MISS', color: '#333', skill: null },
+            { name: 'BULLDOZE', color: '#3498db', skill: 'bulldoze' },
+            { name: 'MISS', color: '#333', skill: null }
+        ];
+
+        this.canvas = document.getElementById('skill-wheel-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.overlay = document.getElementById('skill-wheel-overlay');
+        this.resultEl = document.getElementById('skill-wheel-result');
+        this.hintEl = document.getElementById('skill-wheel-hint');
+
+        this.rotation = 0;
+        this.spinning = false;
+        this.spinSpeed = 0;
+        this.targetRotation = 0;
+
+        this.onResult = null;  // Callback when wheel stops
+
+        this.drawWheel();
+    }
+
+    drawWheel() {
+        const ctx = this.ctx;
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const radius = Math.min(cx, cy) - 5;
+        const segmentAngle = (Math.PI * 2) / this.segments.length;
+
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(this.rotation);
+
+        // Draw segments
+        for (let i = 0; i < this.segments.length; i++) {
+            const startAngle = i * segmentAngle - Math.PI / 2;
+            const endAngle = startAngle + segmentAngle;
+
+            // Segment fill
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, radius, startAngle, endAngle);
+            ctx.closePath();
+            ctx.fillStyle = this.segments[i].color;
+            ctx.fill();
+
+            // Segment border
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Segment text
+            ctx.save();
+            ctx.rotate(startAngle + segmentAngle / 2);
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillText(this.segments[i].name, radius - 15, 0);
+            ctx.restore();
+        }
+
+        // Center circle
+        ctx.beginPath();
+        ctx.arc(0, 0, 20, 0, Math.PI * 2);
+        ctx.fillStyle = '#1a1a3a';
+        ctx.fill();
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    show() {
+        this.overlay.classList.remove('hidden');
+        this.resultEl.textContent = '';
+        this.resultEl.className = '';
+        this.hintEl.textContent = 'Press SPACE to spin';
+        this.spinning = false;
+        this.gameState.skillWheelState = 'ready';
+        this.drawWheel();
+    }
+
+    hide() {
+        this.overlay.classList.add('hidden');
+        this.gameState.skillWheelState = 'idle';
+    }
+
+    startSpin() {
+        if (this.spinning) return;
+
+        this.spinning = true;
+        this.gameState.skillWheelState = 'spinning';
+        this.hintEl.textContent = 'Spinning...';
+        this.audio.uiClick();
+
+        // Random target: 3-5 full rotations + random segment
+        const fullRotations = 3 + Math.random() * 2;
+        const randomSegment = Math.random() * Math.PI * 2;
+        this.targetRotation = this.rotation + (fullRotations * Math.PI * 2) + randomSegment;
+        this.spinSpeed = 0.4;
+
+        this.animateSpin();
+    }
+
+    animateSpin() {
+        if (!this.spinning) return;
+
+        // Ease out
+        const remaining = this.targetRotation - this.rotation;
+        if (remaining > 0.01) {
+            this.spinSpeed = Math.max(0.01, remaining * 0.05);
+            this.rotation += this.spinSpeed;
+            this.drawWheel();
+            requestAnimationFrame(() => this.animateSpin());
+        } else {
+            this.rotation = this.targetRotation;
+            this.drawWheel();
+            this.onSpinComplete();
+        }
+    }
+
+    onSpinComplete() {
+        this.spinning = false;
+        this.gameState.skillWheelState = 'result';
+
+        // Calculate which segment the pointer landed on
+        // Pointer is at top (12 o'clock), so we need to find segment at -rotation
+        const normalizedRotation = (((-this.rotation) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        const segmentAngle = (Math.PI * 2) / this.segments.length;
+        const segmentIndex = Math.floor(normalizedRotation / segmentAngle);
+        const result = this.segments[segmentIndex];
+
+        if (result.skill) {
+            this.resultEl.textContent = `${result.name}!`;
+            this.resultEl.className = 'skill';
+            this.audio.winJingle();
+        } else {
+            this.resultEl.textContent = 'MISS!';
+            this.resultEl.className = 'miss';
+            this.audio.loseSound();
+        }
+
+        // Close overlay and trigger callback after delay
+        setTimeout(() => {
+            this.hide();
+            if (this.onResult) this.onResult(result.skill);
+        }, 1000);
+    }
+
+    reset() {
+        this.spinning = false;
+        this.rotation = 0;
+        this.hide();
+    }
+}
+
+// ===========================================
 // PHYSICS & COLLISION
 // ===========================================
 
@@ -1296,8 +1449,8 @@ class Renderer {
         }
     }
 
-    drawBase(angle) {
-        const baseX = this.canvas.width / 2;  // Top center
+    drawBase() {
+        const baseX = this.gameState.baseX;
         const baseY = CONFIG.BASE_Y;
         const baseRadius = CONFIG.BASE_RADIUS;
 
@@ -1326,28 +1479,14 @@ class Renderer {
 
         this.ctx.shadowBlur = 0;
 
-        // Calculate line endpoint at wall
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-
-        // Find distance to each wall and pick the closest
-        let dist = Infinity;
-        if (cos > 0) dist = Math.min(dist, (this.canvas.width - baseX) / cos);
-        if (cos < 0) dist = Math.min(dist, -baseX / cos);
-        if (sin > 0) dist = Math.min(dist, (this.canvas.height - baseY) / sin);
-        if (sin < 0) dist = Math.min(dist, -baseY / sin);
-
-        const endX = baseX + cos * dist;
-        const endY = baseY + sin * dist;
-
-        // Dashed line to wall
+        // Vertical dashed line pointing straight down
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         this.ctx.lineWidth = 2;
         this.ctx.setLineDash([8, 6]);
         this.ctx.lineCap = 'round';
         this.ctx.beginPath();
         this.ctx.moveTo(baseX, baseY);
-        this.ctx.lineTo(endX, endY);
+        this.ctx.lineTo(baseX, this.canvas.height);
         this.ctx.stroke();
         this.ctx.setLineDash([]);  // Reset dash
     }
@@ -1411,8 +1550,8 @@ class Renderer {
             this.ctx.globalAlpha = 1;
         }
 
-        // Red AOE ready effect - pulsing explosion warning!
-        if (ball.redAOEReady) {
+        // Explosion ready effect - pulsing explosion warning!
+        if (ball.hasExplosion) {
             const pulse = Math.sin(Date.now() * 0.01) * 0.5 + 0.5;  // 0-1 pulsing
             const pulseRadius = ball.radius + 8 + pulse * 12;
 
@@ -1597,9 +1736,9 @@ class Renderer {
         // Draw particles (behind balls)
         this.particles.render(this.ctx);
 
-        // Draw base and indicator (top-left spawn point)
+        // Draw base (moves left/right at top)
         if (!this.gameState.isGameOver) {
-            this.drawBase(this.gameState.arrowAngle);
+            this.drawBase();
         }
 
         // Draw balls
@@ -1807,6 +1946,10 @@ class Game {
         this.slotMachine = new SlotMachine(this.gameState, this.audio);
         this.slotMachine.onResult = (color, count) => this.spawnBalls(color, count);
 
+        // Skill wheel (triggered by x3 basket)
+        this.skillWheel = new SkillWheel(this.gameState, this.audio);
+        this.skillWheel.onResult = (skill) => this.applySkillToAllBalls(skill);
+
         // Screen flash state
         this.flashAlpha = 0;
         this.flashColor = '#ffd700';
@@ -1916,9 +2059,11 @@ class Game {
 
     init() {
         this.gameState.reset();
+        this.gameState.baseX = this.canvas.width / 2;  // Start at center
         this.combo.reset();
         generateLevel(this.gameState, this.canvas.width, this.canvas.height);
         this.slotMachine.reset();
+        this.skillWheel.reset();
         this.updateUI();
     }
 
@@ -1933,6 +2078,16 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
+        // Handle skill wheel
+        if (this.gameState.skillWheelState === 'ready') {
+            this.skillWheel.startSpin();
+            return;
+        }
+        if (this.gameState.skillWheelState === 'spinning' || this.gameState.skillWheelState === 'result') {
+            return;  // Wait for wheel to finish
+        }
+
+        // Handle slot machine
         if (this.gameState.slotState === 'idle') {
             if (!this.gameState.canSpawnBall()) return;
             this.slotMachine.startSpin();
@@ -1944,28 +2099,23 @@ class Game {
     }
 
     spawnBalls(color, count) {
-        // Spawn from base position (top center)
-        const baseX = this.canvas.width / 2;
+        // Spawn from moving base position
+        const baseX = this.gameState.baseX;
         const baseY = CONFIG.BASE_Y;
-        const angle = this.gameState.arrowAngle;
+        const angle = Math.PI / 2;  // Always shoot straight down
         const isRainbow = color === 'rainbow';
-
-        // Yellow special: always 3x the balls!
-        if (color === 'yellow') {
-            count *= 3;
-        }
 
         // Delay between ball spawns (ms)
         const spawnDelay = 150;
 
         for (let i = 0; i < count; i++) {
             setTimeout(() => {
-                const cx = baseX;
+                // Slight horizontal offset for multiple balls
+                const xOffset = count > 1 ? (i - (count - 1) / 2) * 15 : 0;
+                const cx = baseX + xOffset;
                 const cy = baseY;
 
-                // Slight angle variation for multiple balls
-                const angleOffset = count > 1 ? (i - (count - 1) / 2) * 0.15 : 0;
-                const ballAngle = angle + angleOffset;
+                const ballAngle = angle;
 
                 const ballType = isRainbow ? 'rainball' : 'normal';
                 const ball = new Ball(cx, cy, color, ballType, ballAngle);
@@ -2002,6 +2152,7 @@ class Game {
         const basketWidth = this.canvas.width / 5;
         const basketY = this.canvas.height - basketHeight;
         const multipliers = [0, 1, 3, 1, 0];  // void, x1, x3, x1, void
+        let triggerSkillWheel = false;
 
         // Check each ball
         this.gameState.balls = this.gameState.balls.filter(ball => {
@@ -2028,6 +2179,11 @@ class Game {
                     this.audio.blockBreak();
                 }
 
+                // Trigger skill wheel on x3 basket
+                if (multiplier === 3 && this.gameState.balls.length > 1) {
+                    triggerSkillWheel = true;
+                }
+
                 // Particles for basket entry
                 const color = multiplier === 3 ? '#e056fd' :
                               multiplier === 1 ? '#2ecc71' : '#555';
@@ -2037,6 +2193,11 @@ class Game {
             }
             return true;  // Keep ball
         });
+
+        // Show skill wheel if triggered (and there are still balls on screen)
+        if (triggerSkillWheel && this.gameState.balls.length > 0 && this.gameState.skillWheelState === 'idle') {
+            this.skillWheel.show();
+        }
     }
 
     processBallWallCollisions() {
@@ -2061,21 +2222,14 @@ class Game {
                         }
                     }
 
-                    // Blue special: break wall once before losing piercing
-                    if (ball.bluePiercing) {
+                    // Bulldoze: break wall once before losing ability
+                    if (ball.hasBulldoze) {
                         const destroyed = wall.takeDamage();
                         if (destroyed) {
                             this.particles.emit(wall.centerX, wall.centerY, '#5a5a7a', 15);
                             this.audio.blockBreak();
                         }
-                        ball.bluePiercing = false;
-                        // Slow down to normal speed
-                        const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-                        const factor = CONFIG.BALL_SPEED / currentSpeed;
-                        ball.vx *= factor;
-                        ball.vy *= factor;
-                        // Shrink back to normal size
-                        ball.baseRadius = ball.getRadiusByType(ball.type);
+                        ball.hasBulldoze = false;
                     }
                 }
             }
@@ -2096,10 +2250,10 @@ class Game {
                     const damage = ball.getDamage(block);
 
                     if (damage > 0) {
-                        // Red special: AOE explosion on first hit (any block)
-                        if (ball.redAOEReady) {
-                            ball.redAOEReady = false;
-                            this.triggerRedAOE(block.centerX, block.centerY, ball);
+                        // Explosion ability: AOE on first hit (any block)
+                        if (ball.hasExplosion) {
+                            ball.hasExplosion = false;
+                            this.triggerExplosionAOE(block.centerX, block.centerY, ball);
                         }
 
                         // Skip if block was already destroyed by AOE
@@ -2157,8 +2311,8 @@ class Game {
         }
     }
 
-    // Red AOE: destroy all blocks within radius
-    triggerRedAOE(x, y, ball) {
+    // Explosion AOE: destroy all blocks within radius
+    triggerExplosionAOE(x, y, ball) {
         const aoeRadius = 130;  // Explosion radius in pixels
 
         // Big shake and effects for AOE
@@ -2222,6 +2376,46 @@ class Game {
         });
     }
 
+    applySkillToAllBalls(skill) {
+        if (!skill) return;  // MISS - no skill applied
+
+        for (const ball of this.gameState.balls) {
+            if (skill === 'explosion') {
+                ball.hasExplosion = true;
+            } else if (skill === 'bulldoze') {
+                ball.hasBulldoze = true;
+            } else if (skill === 'split') {
+                // Split each ball into 3 - spawn 2 more balls at each ball's position
+                const angle1 = Math.atan2(ball.vy, ball.vx) - 0.5;
+                const angle2 = Math.atan2(ball.vy, ball.vx) + 0.5;
+                const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+
+                const ball1 = new Ball(ball.x, ball.y, ball.color, ball.type, angle1);
+                ball1.vx = Math.cos(angle1) * speed;
+                ball1.vy = Math.sin(angle1) * speed;
+                ball1.points = Math.floor(ball.points / 3);
+                ball1.boosted = ball.boosted;
+                ball1.normalSpeed = ball.normalSpeed;
+
+                const ball2 = new Ball(ball.x, ball.y, ball.color, ball.type, angle2);
+                ball2.vx = Math.cos(angle2) * speed;
+                ball2.vy = Math.sin(angle2) * speed;
+                ball2.points = Math.floor(ball.points / 3);
+                ball2.boosted = ball.boosted;
+                ball2.normalSpeed = ball.normalSpeed;
+
+                this.gameState.balls.push(ball1, ball2);
+
+                // Effects for split
+                this.particles.emit(ball.x, ball.y, ball.getDisplayColor() || '#ffc312', 10);
+            }
+        }
+
+        // Visual feedback
+        this.cameraShake.trigger(8, 200);
+        this.triggerFlash('#ffd700', 0.3);
+    }
+
     showCombo(count) {
         this.comboText.textContent = `COMBO x${count}!`;
         this.comboDisplay.classList.remove('hidden');
@@ -2280,20 +2474,27 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
-        // Pause indicator while slot is active
+        // Pause while slot is active
         if (this.gameState.slotState !== 'idle') {
             this.updateUI();
             return;
         }
 
-        // Ping-pong indicator between 0 (right) and π (left) - full 180 degrees
-        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED * this.gameState.arrowDirection;
-        if (this.gameState.arrowAngle >= Math.PI) {
-            this.gameState.arrowAngle = Math.PI;
-            this.gameState.arrowDirection = -1;
-        } else if (this.gameState.arrowAngle <= 0) {
-            this.gameState.arrowAngle = 0;
-            this.gameState.arrowDirection = 1;
+        // Pause while skill wheel is active (but keep balls visible)
+        if (this.gameState.skillWheelState !== 'idle') {
+            this.updateUI();
+            return;
+        }
+
+        // Move base left/right
+        const baseRadius = CONFIG.BASE_RADIUS;
+        this.gameState.baseX += CONFIG.BASE_SPEED * this.gameState.baseDirection;
+        if (this.gameState.baseX >= this.canvas.width - baseRadius) {
+            this.gameState.baseX = this.canvas.width - baseRadius;
+            this.gameState.baseDirection = -1;
+        } else if (this.gameState.baseX <= baseRadius) {
+            this.gameState.baseX = baseRadius;
+            this.gameState.baseDirection = 1;
         }
 
         // Check for slow-motion trigger
@@ -2398,9 +2599,8 @@ class Game {
             this.spacebarHint.classList.add('active');
         }
 
-        // Update arrow indicator rotation on slot overlay
-        const angleDeg = (this.gameState.arrowAngle * 180 / Math.PI);
-        this.arrowIndicator.style.transform = `rotate(${angleDeg}deg)`;
+        // Arrow indicator always points down (base moves left/right instead)
+        this.arrowIndicator.style.transform = `rotate(90deg)`;
 
         this.updateDebugPanel();
     }
