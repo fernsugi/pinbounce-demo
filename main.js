@@ -761,7 +761,7 @@ class Ball {
 
     canDamage(block) {
         if (this.color === 'rainbow') return true;
-        if (this.color === 'white') return true;  // Mother ball can damage any block
+        if (this.color === 'white') return false;  // Mother ball just bounces, no damage
         if (block.color === 'neutral') return true;
         // Blue special: piercing mode breaks ANY block
         if (this.bluePiercing) return true;
