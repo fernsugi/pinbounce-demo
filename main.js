@@ -21,10 +21,10 @@ const CONFIG = {
     BALL_RADIUS_BIG: 16,
 
     // Ball wall lives by type
-    WALL_LIVES_NORMAL: 3,
-    WALL_LIVES_MEDIUM: 4,
-    WALL_LIVES_BIG: 5,
-    WALL_LIVES_RAINBALL: 3,
+    WALL_LIVES_NORMAL: 6,
+    WALL_LIVES_MEDIUM: 8,
+    WALL_LIVES_BIG: 10,
+    WALL_LIVES_RAINBALL: 6,
 
     // Ball movement speed
     BALL_SPEED: 6,
@@ -1850,6 +1850,7 @@ class Game {
     }
 
     processBallWallCollisions() {
+        const now = Date.now();
         for (const ball of this.gameState.balls) {
             for (const wall of this.gameState.walls) {
                 const collision = circleRectCollision(ball, wall);
@@ -1857,6 +1858,13 @@ class Game {
                     reflectVelocity(ball, collision.nx, collision.ny);
                     ball.x += collision.nx * collision.penetration;
                     ball.y += collision.ny * collision.penetration;
+
+                    // Deduct wall life (same as screen walls)
+                    if (now - ball.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
+                        ball.wallLives--;
+                        ball.lastWallHitTime = now;
+                        this.audio.wallHit(ball.wallLives, ball.maxWallLives);
+                    }
 
                     // Blue special: lose piercing, slow down, and shrink on wall hit
                     if (ball.bluePiercing) {
