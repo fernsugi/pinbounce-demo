@@ -2389,6 +2389,9 @@ class Game {
                     ball.x += collision.nx * collision.penetration;
                     ball.y += collision.ny * collision.penetration;
 
+                    // Track wall hit for bonus points when no blocks left
+                    ball.hitWallThisFrame = true;
+
                     // Lose boost on obstacle wall hit
                     if (ball.boosted) {
                         ball.boosted = false;
