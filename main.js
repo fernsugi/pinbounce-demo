@@ -1941,6 +1941,65 @@ class Renderer {
             this.ctx.fillStyle = gradient;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
+
+        // Draw FEVER TIME when no blocks left and balls still bouncing
+        if (this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0 && !this.gameState.isGameOver) {
+            this.drawFeverTime();
+        }
+    }
+
+    drawFeverTime() {
+        const cx = this.canvas.width / 2;
+        const cy = 100;
+        const time = Date.now();
+
+        // Pulsing scale
+        const pulse = 1 + Math.sin(time * 0.008) * 0.1;
+
+        // Cycling fire colors
+        const hue = (time * 0.2) % 60;  // Orange to red range
+        const mainColor = `hsl(${hue}, 100%, 50%)`;
+        const glowColor = `hsl(${hue + 20}, 100%, 60%)`;
+
+        this.ctx.save();
+        this.ctx.translate(cx, cy);
+        this.ctx.scale(pulse, pulse);
+
+        // Background banner
+        const bannerWidth = 200;
+        const bannerHeight = 50;
+        const bannerGradient = this.ctx.createLinearGradient(-bannerWidth/2, 0, bannerWidth/2, 0);
+        bannerGradient.addColorStop(0, 'rgba(255, 100, 0, 0)');
+        bannerGradient.addColorStop(0.2, 'rgba(255, 50, 0, 0.8)');
+        bannerGradient.addColorStop(0.5, 'rgba(255, 80, 0, 0.9)');
+        bannerGradient.addColorStop(0.8, 'rgba(255, 50, 0, 0.8)');
+        bannerGradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+        this.ctx.fillStyle = bannerGradient;
+        this.ctx.fillRect(-bannerWidth/2, -bannerHeight/2, bannerWidth, bannerHeight);
+
+        // Text glow
+        this.ctx.shadowColor = glowColor;
+        this.ctx.shadowBlur = 20 + Math.sin(time * 0.01) * 10;
+
+        // Main text
+        this.ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillStyle = mainColor;
+        this.ctx.fillText('FEVER TIME!', 0, 0);
+
+        // White outline for pop
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeText('FEVER TIME!', 0, 0);
+
+        // Bonus indicator
+        this.ctx.shadowBlur = 0;
+        this.ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+        this.ctx.fillStyle = '#ffff00';
+        this.ctx.fillText('+1 per bounce!', 0, 22);
+
+        this.ctx.restore();
     }
 }
 
