@@ -1153,10 +1153,15 @@ class SkillWheel {
         this.overlay.classList.remove('hidden');
         this.resultEl.textContent = '';
         this.resultEl.className = '';
-        this.hintEl.textContent = 'Press SPACE to spin';
-        this.spinning = false;
-        this.gameState.skillWheelState = 'ready';
+        this.hintEl.textContent = 'Press SPACE to stop';
+        this.stopping = false;
+        this.gameState.skillWheelState = 'spinning';
         this.drawWheel();
+
+        // Auto-start spinning
+        this.spinning = true;
+        this.spinSpeed = 0.3;
+        this.animateSpin();
     }
 
     hide() {
@@ -1164,37 +1169,39 @@ class SkillWheel {
         this.gameState.skillWheelState = 'idle';
     }
 
-    startSpin() {
-        if (this.spinning) return;
+    stopSpin() {
+        if (!this.spinning || this.stopping) return;
 
-        this.spinning = true;
-        this.gameState.skillWheelState = 'spinning';
-        this.hintEl.textContent = 'Spinning...';
+        this.stopping = true;
+        this.hintEl.textContent = 'Stopping...';
         this.audio.uiClick();
 
-        // Random target: 3-5 full rotations + random segment
-        const fullRotations = 3 + Math.random() * 2;
-        const randomSegment = Math.random() * Math.PI * 2;
-        this.targetRotation = this.rotation + (fullRotations * Math.PI * 2) + randomSegment;
-        this.spinSpeed = 0.4;
-
-        this.animateSpin();
+        // Set target to current + 1-2 more rotations for dramatic slowdown
+        const extraRotations = 1 + Math.random();
+        this.targetRotation = this.rotation + (extraRotations * Math.PI * 2);
     }
 
     animateSpin() {
         if (!this.spinning) return;
 
-        // Ease out
-        const remaining = this.targetRotation - this.rotation;
-        if (remaining > 0.01) {
-            this.spinSpeed = Math.max(0.01, remaining * 0.05);
+        if (this.stopping) {
+            // Ease out to target
+            const remaining = this.targetRotation - this.rotation;
+            if (remaining > 0.01) {
+                this.spinSpeed = Math.max(0.01, remaining * 0.05);
+                this.rotation += this.spinSpeed;
+                this.drawWheel();
+                requestAnimationFrame(() => this.animateSpin());
+            } else {
+                this.rotation = this.targetRotation;
+                this.drawWheel();
+                this.onSpinComplete();
+            }
+        } else {
+            // Continuous spin until stopped
             this.rotation += this.spinSpeed;
             this.drawWheel();
             requestAnimationFrame(() => this.animateSpin());
-        } else {
-            this.rotation = this.targetRotation;
-            this.drawWheel();
-            this.onSpinComplete();
         }
     }
 
@@ -1228,6 +1235,7 @@ class SkillWheel {
 
     reset() {
         this.spinning = false;
+        this.stopping = false;
         this.rotation = 0;
         this.hide();
     }
@@ -1452,43 +1460,34 @@ class Renderer {
     drawBase() {
         const baseX = this.gameState.baseX;
         const baseY = CONFIG.BASE_Y;
-        const baseRadius = CONFIG.BASE_RADIUS;
+        const baseWidth = CONFIG.BASE_RADIUS * 1.5;
+        const baseHeight = CONFIG.BASE_RADIUS * 1.2;
 
-        // Draw half circle base stuck to top wall with glow
+        // Draw triangle pointing down with glow
         this.ctx.shadowColor = 'rgba(0, 210, 211, 0.6)';
         this.ctx.shadowBlur = 15;
 
-        // Base outer arc (half circle from left to right)
-        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.8)';
-        this.ctx.lineWidth = 3;
+        // Triangle path: top-left, top-right, bottom-center
         this.ctx.beginPath();
-        this.ctx.arc(baseX, baseY, baseRadius, 0, Math.PI);
-        this.ctx.stroke();
-
-        // Base inner fill (half circle)
-        const gradient = this.ctx.createRadialGradient(baseX, baseY, 0, baseX, baseY, baseRadius);
-        gradient.addColorStop(0, 'rgba(0, 210, 211, 0.5)');
-        gradient.addColorStop(0.7, 'rgba(0, 150, 151, 0.3)');
-        gradient.addColorStop(1, 'rgba(0, 100, 101, 0.1)');
-        this.ctx.fillStyle = gradient;
-        this.ctx.beginPath();
-        this.ctx.moveTo(baseX - baseRadius, baseY);
-        this.ctx.arc(baseX, baseY, baseRadius, Math.PI, 0, true);
+        this.ctx.moveTo(baseX - baseWidth, baseY);      // Top-left
+        this.ctx.lineTo(baseX + baseWidth, baseY);      // Top-right
+        this.ctx.lineTo(baseX, baseY + baseHeight);     // Bottom-center (point)
         this.ctx.closePath();
+
+        // Fill with gradient
+        const gradient = this.ctx.createLinearGradient(baseX, baseY, baseX, baseY + baseHeight);
+        gradient.addColorStop(0, 'rgba(0, 210, 211, 0.6)');
+        gradient.addColorStop(0.7, 'rgba(0, 150, 151, 0.4)');
+        gradient.addColorStop(1, 'rgba(0, 100, 101, 0.2)');
+        this.ctx.fillStyle = gradient;
         this.ctx.fill();
 
-        this.ctx.shadowBlur = 0;
-
-        // Vertical dashed line pointing straight down
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        // Stroke outline
+        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.8)';
         this.ctx.lineWidth = 2;
-        this.ctx.setLineDash([8, 6]);
-        this.ctx.lineCap = 'round';
-        this.ctx.beginPath();
-        this.ctx.moveTo(baseX, baseY);
-        this.ctx.lineTo(baseX, this.canvas.height);
         this.ctx.stroke();
-        this.ctx.setLineDash([]);  // Reset dash
+
+        this.ctx.shadowBlur = 0;
     }
 
     drawBall(ball) {
@@ -1973,7 +1972,6 @@ class Game {
         this.comboDisplay = document.getElementById('combo-display');
         this.comboText = document.getElementById('combo-text');
         this.settingsPanel = document.getElementById('settings-panel');
-        this.arrowIndicator = document.getElementById('arrow-indicator-icon');
 
         // Timing
         this.lastTime = performance.now();
@@ -2079,11 +2077,11 @@ class Game {
         if (this.gameState.isGameOver) return;
 
         // Handle skill wheel
-        if (this.gameState.skillWheelState === 'ready') {
-            this.skillWheel.startSpin();
+        if (this.gameState.skillWheelState === 'spinning') {
+            this.skillWheel.stopSpin();
             return;
         }
-        if (this.gameState.skillWheelState === 'spinning' || this.gameState.skillWheelState === 'result') {
+        if (this.gameState.skillWheelState === 'result') {
             return;  // Wait for wheel to finish
         }
 
@@ -2598,9 +2596,6 @@ class Game {
             this.actionLabel.textContent = '...';
             this.spacebarHint.classList.add('active');
         }
-
-        // Arrow indicator always points down (base moves left/right instead)
-        this.arrowIndicator.style.transform = `rotate(90deg)`;
 
         this.updateDebugPanel();
     }
