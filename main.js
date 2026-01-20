@@ -1180,8 +1180,8 @@ class SkillWheel {
         this.hintEl.textContent = 'Stopping...';
         this.audio.uiClick();
 
-        // Set target to current + 1-2 more rotations for dramatic slowdown
-        const extraRotations = 1 + Math.random();
+        // Set target to current + 0.3-0.8 more rotations for quick slowdown
+        const extraRotations = 0.3 + Math.random() * 0.5;
         this.targetRotation = this.rotation + (extraRotations * Math.PI * 2);
     }
 
@@ -1189,10 +1189,10 @@ class SkillWheel {
         if (!this.spinning) return;
 
         if (this.stopping) {
-            // Ease out to target
+            // Ease out to target (faster deceleration)
             const remaining = this.targetRotation - this.rotation;
-            if (remaining > 0.01) {
-                this.spinSpeed = Math.max(0.01, remaining * 0.05);
+            if (remaining > 0.02) {
+                this.spinSpeed = Math.max(0.02, remaining * 0.15);
                 this.rotation += this.spinSpeed;
                 this.drawWheel();
                 requestAnimationFrame(() => this.animateSpin());
