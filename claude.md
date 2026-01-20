@@ -3,11 +3,63 @@
 ## Overview
 Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML5 Canvas. Players shoot colored balls from a moving base to destroy blocks and score points.
 
+## Economy System
+
+### Points as Currency
+- New players start with 5,000 points
+- Each slot spin costs 100 points
+- Points are persistent (saved to localStorage)
+- Session points earned from gameplay are added to balance when game ends
+
+### Free Spins
+- Free spins bypass the point cost
+- Purchased in packs of 5 (dummy $0.99)
+- Shown with purple "FREE" badge in-game
+
+### Daily Reward
+- 2,500 points once per day
+- Banner appears on main menu when available
+
+### Ad System (Dummy)
+- Prompted when player runs out of points
+- 5-second countdown before skip available
+- Rewards 2,500 points
+
+### Shop
+- Ball skins: Fire, Ice (500 points), Gold, Neon ($1.99)
+- Trails: Spark (300 points), Rainbow ($0.99)
+- Cosmetics can be purchased with points or real money (dummy)
+- Equipped cosmetics persist across sessions
+
+## Game Flow
+
+### Main Menu
+1. Player sees balance, daily reward (if available), stats
+2. PLAY → starts new game session
+3. SHOP → browse/buy cosmetics and free spins
+4. SETTINGS → sound, haptics, performance mode, reset progress
+
+### In-Game
+1. Press SPACE to spin slot (costs 100 points or 1 free spin)
+2. Balls queue up until player has balls on screen
+3. LAUNCH ALL button appears when balls are queued
+4. Session points accumulate from gameplay
+5. Game ends when:
+   - All blocks cleared (win) - session points added to balance
+   - Can't afford spin + no balls in play (lose) - session points added
+   - Player forfeits - session points saved
+
+### Session End
+- Points earned are added to player balance
+- Overlay shows amount earned
+- "BACK TO MENU" returns to main menu
+- If out of points, ad prompt appears
+
 ## Core Mechanics
 
 ### Base & Shooting
 - Base moves left/right automatically at the top of the screen
-- Press SPACE to spin the slot machine and shoot balls downward
+- Press SPACE to spin the slot machine and queue balls
 - Balls always shoot straight down from the base position
 
 ### Slot Machine
@@ -42,32 +94,46 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Flashy "FEVER TIME!" banner appears in center
 - +1 bonus point per wall bounce (outer walls AND obstacle walls)
 
-### Scoring
-- Points from block damage * basket multiplier
-- Fever Time: +1 per bounce when no blocks left
-- Final score multiplied by (1 + remaining spins * 0.1)
-
 ## Key Files
 
 ### main.js
 Main game logic containing:
-- `CONFIG` - Game configuration constants (line ~20)
-- `JUICE` - Visual effects settings (line ~87)
-- `GameState` - Core game state (line ~630)
-- `Ball` - Ball physics and behavior (line ~716)
-- `Block` - Block entities (line ~840)
-- `SlotMachine` - Slot mechanics (line ~893)
-- `SkillWheel` - Skill wheel mechanics (line ~1120)
-- `Renderer` - Canvas rendering (line ~1426)
-- `Game` - Main game loop and logic (line ~2060)
+- `ECONOMY` - Economy constants (line ~41)
+- `PlayerData` - Persistent player data with localStorage (line ~62)
+- `MenuManager` - Main menu, shop, ads handling (line ~228)
+- `CONFIG` - Game configuration constants (line ~554)
+- `JUICE` - Visual effects settings (line ~620)
+- `GameState` - Core game state (line ~1160)
+- `Ball` - Ball physics and behavior (line ~1250)
+- `Block` - Block entities (line ~1375)
+- `SlotMachine` - Slot mechanics (line ~1430)
+- `SkillWheel` - Skill wheel mechanics (line ~1680)
+- `Renderer` - Canvas rendering (line ~1960)
+- `Game` - Main game loop and logic (line ~2682)
 
 ### index.html
-Game structure with overlays for slot machine, skill wheel, settings, and game over.
+Game structure with:
+- Main menu overlay
+- In-game header (balance + session points)
+- Queue display for batched balls
+- Shop panel with cosmetics
+- Ad prompt and dummy ad player
+- Purchase confirmation modal
+- Toast notification container
 
 ### style.css
 Mobile-first responsive styling with arcade aesthetic.
 
 ## Configuration
+
+### Economy Constants (ECONOMY)
+```javascript
+STARTING_POINTS: 5000,      // New player balance
+SPIN_COST: 100,             // Cost per slot spin
+DAILY_REWARD: 2500,         // Daily login bonus
+AD_REWARD: 2500,            // Points for watching ad
+FREE_SPIN_PACK_COUNT: 5,    // Spins per pack
+```
 
 ### Block Colors (CONFIG.COLOR_WEIGHTS)
 ```javascript
@@ -84,5 +150,15 @@ Set weight to 0 to disable that color.
 ## Controls
 - SPACE - Spin slot / Stop skill wheel / Skip animations
 - D - Toggle debug panel
-- Restart button - Reset game
+- FORFEIT button - End game early, keep earned points
+- LAUNCH ALL - Launch all queued balls
 - Settings - Toggle sound, haptics, performance mode
+
+## Data Persistence (localStorage)
+Player data saved as `pinbounce_playerdata`:
+- points, freeSpins
+- totalGamesPlayed, totalPointsEarned, highScore
+- lastDailyReward (ISO date string)
+- ownedCosmetics, equippedBallSkin, equippedTrail
+- adsWatched
+- settings (sound, haptics, performanceMode)

@@ -35,6 +35,535 @@
    =========================================== */
 
 // ===========================================
+// ECONOMY CONSTANTS - Monetization system
+// ===========================================
+
+const ECONOMY = {
+    STARTING_POINTS: 5000,          // New player starting balance
+    SPIN_COST: 100,                 // Cost per slot spin
+    DAILY_REWARD: 2500,             // Daily login reward
+    AD_REWARD: 2500,                // Points for watching an ad
+    FREE_SPIN_PACK_COUNT: 5,        // Spins in a pack
+    FREE_SPIN_PACK_PRICE: 0.99,     // USD (dummy)
+
+    // Cosmetics prices (in points for common, real money for rare)
+    COSMETICS: {
+        BALL_SKIN_COMMON: 500,      // Points
+        BALL_SKIN_RARE: 1.99,       // USD (dummy)
+        TRAIL_COMMON: 300,          // Points
+        TRAIL_RARE: 0.99,           // USD (dummy)
+    }
+};
+
+// ===========================================
+// PLAYER DATA - Persistent storage
+// ===========================================
+
+class PlayerData {
+    constructor() {
+        this.load();
+    }
+
+    getDefaults() {
+        return {
+            points: ECONOMY.STARTING_POINTS,
+            freeSpins: 0,
+            totalGamesPlayed: 0,
+            totalPointsEarned: 0,
+            highScore: 0,
+            lastDailyReward: null,
+            ownedCosmetics: ['default_ball', 'default_trail'],
+            equippedBallSkin: 'default_ball',
+            equippedTrail: 'default_trail',
+            adsWatched: 0,
+            settings: {
+                sound: true,
+                haptics: true,
+                performanceMode: false
+            }
+        };
+    }
+
+    load() {
+        try {
+            const saved = localStorage.getItem('pinbounce_playerdata');
+            if (saved) {
+                const data = JSON.parse(saved);
+                // Merge with defaults to handle new fields
+                const defaults = this.getDefaults();
+                Object.assign(this, defaults, data);
+            } else {
+                Object.assign(this, this.getDefaults());
+            }
+        } catch (e) {
+            console.error('Failed to load player data:', e);
+            Object.assign(this, this.getDefaults());
+        }
+    }
+
+    save() {
+        try {
+            const data = {
+                points: this.points,
+                freeSpins: this.freeSpins,
+                totalGamesPlayed: this.totalGamesPlayed,
+                totalPointsEarned: this.totalPointsEarned,
+                highScore: this.highScore,
+                lastDailyReward: this.lastDailyReward,
+                ownedCosmetics: this.ownedCosmetics,
+                equippedBallSkin: this.equippedBallSkin,
+                equippedTrail: this.equippedTrail,
+                adsWatched: this.adsWatched,
+                settings: this.settings
+            };
+            localStorage.setItem('pinbounce_playerdata', JSON.stringify(data));
+        } catch (e) {
+            console.error('Failed to save player data:', e);
+        }
+    }
+
+    canAffordSpin() {
+        return this.freeSpins > 0 || this.points >= ECONOMY.SPIN_COST;
+    }
+
+    spendSpin() {
+        if (this.freeSpins > 0) {
+            this.freeSpins--;
+            this.save();
+            return true;
+        } else if (this.points >= ECONOMY.SPIN_COST) {
+            this.points -= ECONOMY.SPIN_COST;
+            this.save();
+            return true;
+        }
+        return false;
+    }
+
+    addPoints(amount) {
+        this.points += amount;
+        this.totalPointsEarned += amount;
+        if (amount > this.highScore) {
+            this.highScore = amount;
+        }
+        this.save();
+    }
+
+    canClaimDailyReward() {
+        if (!this.lastDailyReward) return true;
+        const last = new Date(this.lastDailyReward);
+        const now = new Date();
+        // Check if it's a new day
+        return last.toDateString() !== now.toDateString();
+    }
+
+    claimDailyReward() {
+        if (!this.canClaimDailyReward()) return false;
+        this.points += ECONOMY.DAILY_REWARD;
+        this.lastDailyReward = new Date().toISOString();
+        this.save();
+        return true;
+    }
+
+    watchAd() {
+        this.points += ECONOMY.AD_REWARD;
+        this.adsWatched++;
+        this.save();
+    }
+
+    purchaseFreeSpins() {
+        // Dummy - in real implementation, this would go through payment
+        this.freeSpins += ECONOMY.FREE_SPIN_PACK_COUNT;
+        this.save();
+        return true;
+    }
+
+    purchaseCosmetic(id, type) {
+        if (this.ownedCosmetics.includes(id)) return false;
+        this.ownedCosmetics.push(id);
+        this.save();
+        return true;
+    }
+
+    equipCosmetic(id, type) {
+        if (!this.ownedCosmetics.includes(id)) return false;
+        if (type === 'ball') {
+            this.equippedBallSkin = id;
+        } else if (type === 'trail') {
+            this.equippedTrail = id;
+        }
+        this.save();
+        return true;
+    }
+
+    resetProgress() {
+        Object.assign(this, this.getDefaults());
+        this.save();
+    }
+}
+
+// Global player data instance
+const playerData = new PlayerData();
+
+// ===========================================
+// TOAST NOTIFICATION SYSTEM
+// ===========================================
+
+function showToast(message, type = 'info', duration = 2500) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+// ===========================================
+// MENU MANAGER - Main menu and shop
+// ===========================================
+
+class MenuManager {
+    constructor() {
+        this.mainMenu = document.getElementById('main-menu');
+        this.shopPanel = document.getElementById('shop-panel');
+        this.settingsPanel = document.getElementById('settings-panel');
+        this.adPrompt = document.getElementById('ad-prompt');
+        this.adPlayer = document.getElementById('ad-player');
+        this.purchaseConfirm = document.getElementById('purchase-confirm');
+
+        // Menu elements
+        this.menuPoints = document.getElementById('menu-points');
+        this.menuFreeSpinCount = document.getElementById('menu-free-spin-count');
+        this.menuFreeSpins = document.getElementById('menu-free-spins');
+        this.dailyRewardBanner = document.getElementById('daily-reward-banner');
+        this.statGames = document.getElementById('stat-games');
+        this.statHighscore = document.getElementById('stat-highscore');
+        this.statTotal = document.getElementById('stat-total');
+
+        // Shop elements
+        this.shopPoints = document.getElementById('shop-points');
+
+        // Current purchase context
+        this.pendingPurchase = null;
+
+        // Ad countdown
+        this.adCountdown = 5;
+        this.adTimer = null;
+
+        this.setupEventListeners();
+        this.updateMenuUI();
+    }
+
+    setupEventListeners() {
+        // Play button
+        document.getElementById('play-btn').addEventListener('click', () => {
+            this.hideMainMenu();
+            if (window.game) {
+                window.game.startNewGame();
+            }
+        });
+
+        // Shop button
+        document.getElementById('shop-btn').addEventListener('click', () => {
+            this.showShop();
+        });
+
+        // Menu settings button
+        document.getElementById('menu-settings-btn').addEventListener('click', () => {
+            this.mainMenu.classList.add('hidden');
+            // Hide any lingering overlays
+            document.getElementById('overlay').classList.add('hidden');
+            document.getElementById('overlay-points-earned').classList.add('hidden');
+            document.getElementById('slot-overlay').classList.add('hidden');
+            document.getElementById('skill-wheel-overlay').classList.add('hidden');
+            this.settingsPanel.classList.remove('hidden');
+        });
+
+        // Shop close
+        document.getElementById('shop-close').addEventListener('click', () => {
+            this.hideShop();
+        });
+
+        // Daily reward claim
+        document.getElementById('claim-daily-btn').addEventListener('click', () => {
+            if (playerData.claimDailyReward()) {
+                showToast(`+${ECONOMY.DAILY_REWARD} points!`, 'reward', 3000);
+                this.updateMenuUI();
+            }
+        });
+
+        // Free spins purchase
+        document.getElementById('buy-spins-btn').addEventListener('click', () => {
+            this.showPurchaseConfirm(
+                'Buy Free Spins',
+                `Get ${ECONOMY.FREE_SPIN_PACK_COUNT} free spins for $${ECONOMY.FREE_SPIN_PACK_PRICE}?`,
+                () => {
+                    playerData.purchaseFreeSpins();
+                    showToast(`+${ECONOMY.FREE_SPIN_PACK_COUNT} free spins!`, 'success');
+                    this.updateMenuUI();
+                    this.updateShopUI();
+                }
+            );
+        });
+
+        // Cosmetic items
+        document.querySelectorAll('.cosmetic-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const id = item.dataset.id;
+                const type = item.dataset.type;
+                const price = parseFloat(item.dataset.price);
+                const currency = item.dataset.currency;
+
+                if (playerData.ownedCosmetics.includes(id)) {
+                    // Already owned - equip it
+                    playerData.equipCosmetic(id, type);
+                    showToast('Equipped!', 'success');
+                    this.updateShopUI();
+                } else {
+                    // Purchase
+                    if (currency === 'points') {
+                        if (playerData.points >= price) {
+                            this.showPurchaseConfirm(
+                                'Buy Cosmetic',
+                                `Buy this item for ${price} points?`,
+                                () => {
+                                    playerData.points -= price;
+                                    playerData.purchaseCosmetic(id, type);
+                                    playerData.equipCosmetic(id, type);
+                                    showToast('Purchased & equipped!', 'success');
+                                    this.updateMenuUI();
+                                    this.updateShopUI();
+                                }
+                            );
+                        } else {
+                            showToast('Not enough points!', 'error');
+                        }
+                    } else {
+                        // USD purchase (dummy)
+                        this.showPurchaseConfirm(
+                            'Buy Cosmetic',
+                            `Buy this item for $${price}?`,
+                            () => {
+                                playerData.purchaseCosmetic(id, type);
+                                playerData.equipCosmetic(id, type);
+                                showToast('Purchased & equipped!', 'success');
+                                this.updateShopUI();
+                            }
+                        );
+                    }
+                }
+            });
+        });
+
+        // Purchase confirm buttons
+        document.getElementById('confirm-purchase-btn').addEventListener('click', () => {
+            if (this.pendingPurchase) {
+                this.pendingPurchase();
+                this.pendingPurchase = null;
+            }
+            this.hidePurchaseConfirm();
+        });
+
+        document.getElementById('cancel-purchase-btn').addEventListener('click', () => {
+            this.pendingPurchase = null;
+            this.hidePurchaseConfirm();
+        });
+
+        // Ad prompt buttons
+        document.getElementById('watch-ad-btn').addEventListener('click', () => {
+            this.hideAdPrompt();
+            this.showAdPlayer();
+        });
+
+        document.getElementById('no-ad-btn').addEventListener('click', () => {
+            this.hideAdPrompt();
+            this.showMainMenu();
+        });
+
+        // Ad skip button
+        document.getElementById('ad-skip-btn').addEventListener('click', () => {
+            this.completeAd();
+        });
+
+        // Reset progress
+        document.getElementById('reset-progress-btn').addEventListener('click', () => {
+            if (confirm('Are you sure? This will reset ALL progress!')) {
+                playerData.resetProgress();
+                showToast('Progress reset', 'warning');
+                this.updateMenuUI();
+            }
+        });
+
+        // Settings toggles
+        document.getElementById('sound-toggle').addEventListener('change', (e) => {
+            playerData.settings.sound = e.target.checked;
+            playerData.save();
+            JUICE.SOUND_ENABLED = e.target.checked;
+            if (window.game) window.game.audio.enabled = e.target.checked;
+        });
+
+        document.getElementById('haptics-toggle').addEventListener('change', (e) => {
+            playerData.settings.haptics = e.target.checked;
+            playerData.save();
+            JUICE.HAPTICS_ENABLED = e.target.checked;
+        });
+
+        document.getElementById('perf-toggle').addEventListener('change', (e) => {
+            playerData.settings.performanceMode = e.target.checked;
+            playerData.save();
+            JUICE.PERFORMANCE_MODE = e.target.checked;
+        });
+
+        document.getElementById('settings-close').addEventListener('click', () => {
+            this.settingsPanel.classList.add('hidden');
+            this.mainMenu.classList.remove('hidden');
+            this.updateMenuUI();
+        });
+    }
+
+    updateMenuUI() {
+        // Update points display
+        this.menuPoints.textContent = playerData.points.toLocaleString();
+
+        // Update free spins display
+        if (playerData.freeSpins > 0) {
+            this.menuFreeSpins.classList.remove('hidden');
+            this.menuFreeSpinCount.textContent = playerData.freeSpins;
+        } else {
+            this.menuFreeSpins.classList.add('hidden');
+        }
+
+        // Update daily reward banner
+        if (playerData.canClaimDailyReward()) {
+            this.dailyRewardBanner.classList.remove('hidden');
+        } else {
+            this.dailyRewardBanner.classList.add('hidden');
+        }
+
+        // Update stats
+        this.statGames.textContent = playerData.totalGamesPlayed;
+        this.statHighscore.textContent = playerData.highScore.toLocaleString();
+        this.statTotal.textContent = playerData.totalPointsEarned.toLocaleString();
+
+        // Sync settings toggles
+        document.getElementById('sound-toggle').checked = playerData.settings.sound;
+        document.getElementById('haptics-toggle').checked = playerData.settings.haptics;
+        document.getElementById('perf-toggle').checked = playerData.settings.performanceMode;
+    }
+
+    updateShopUI() {
+        this.shopPoints.textContent = playerData.points.toLocaleString();
+
+        // Update cosmetic item states
+        document.querySelectorAll('.cosmetic-item').forEach(item => {
+            const id = item.dataset.id;
+            const type = item.dataset.type;
+
+            item.classList.remove('owned', 'equipped');
+
+            if (playerData.ownedCosmetics.includes(id)) {
+                item.classList.add('owned');
+
+                // Check if equipped
+                if ((type === 'ball' && playerData.equippedBallSkin === id) ||
+                    (type === 'trail' && playerData.equippedTrail === id)) {
+                    item.classList.add('equipped');
+                }
+
+                // Update price display to show status
+                const priceEl = item.querySelector('.cosmetic-price');
+                if (priceEl) {
+                    if (item.classList.contains('equipped')) {
+                        priceEl.textContent = 'EQUIPPED';
+                        priceEl.className = 'cosmetic-status';
+                    } else {
+                        priceEl.textContent = 'OWNED';
+                        priceEl.className = 'cosmetic-status';
+                    }
+                }
+            }
+        });
+    }
+
+    showMainMenu() {
+        this.mainMenu.classList.remove('hidden');
+        this.updateMenuUI();
+    }
+
+    hideMainMenu() {
+        this.mainMenu.classList.add('hidden');
+    }
+
+    showShop() {
+        this.mainMenu.classList.add('hidden');
+        // Hide any lingering overlays
+        document.getElementById('overlay').classList.add('hidden');
+        document.getElementById('overlay-points-earned').classList.add('hidden');
+        document.getElementById('slot-overlay').classList.add('hidden');
+        document.getElementById('skill-wheel-overlay').classList.add('hidden');
+        this.shopPanel.classList.remove('hidden');
+        this.updateShopUI();
+    }
+
+    hideShop() {
+        this.shopPanel.classList.add('hidden');
+        this.mainMenu.classList.remove('hidden');
+        this.updateMenuUI();
+    }
+
+    showPurchaseConfirm(title, desc, callback) {
+        document.getElementById('purchase-title').textContent = title;
+        document.getElementById('purchase-desc').textContent = desc;
+        this.pendingPurchase = callback;
+        this.purchaseConfirm.classList.remove('hidden');
+    }
+
+    hidePurchaseConfirm() {
+        this.purchaseConfirm.classList.add('hidden');
+    }
+
+    showAdPrompt() {
+        this.adPrompt.classList.remove('hidden');
+    }
+
+    hideAdPrompt() {
+        this.adPrompt.classList.add('hidden');
+    }
+
+    showAdPlayer() {
+        this.adPlayer.classList.remove('hidden');
+        this.adCountdown = 5;
+        document.getElementById('ad-countdown').textContent = this.adCountdown;
+        document.getElementById('ad-skip-btn').classList.add('hidden');
+
+        this.adTimer = setInterval(() => {
+            this.adCountdown--;
+            document.getElementById('ad-countdown').textContent = this.adCountdown;
+
+            if (this.adCountdown <= 0) {
+                clearInterval(this.adTimer);
+                document.getElementById('ad-skip-btn').classList.remove('hidden');
+            }
+        }, 1000);
+    }
+
+    completeAd() {
+        clearInterval(this.adTimer);
+        this.adPlayer.classList.add('hidden');
+        playerData.watchAd();
+        showToast(`+${ECONOMY.AD_REWARD} points!`, 'reward', 3000);
+        this.updateMenuUI();
+        this.showMainMenu();
+    }
+}
+
+// Global menu manager instance (created after DOM loads)
+let menuManager = null;
+
+// ===========================================
 // GAMEPLAY CONSTANTS - Core mechanics
 // ===========================================
 
@@ -935,9 +1464,8 @@ class SlotMachine {
 
     startSpin() {
         if (this.gameState.slotState !== 'idle') return;
-        if (this.gameState.spinsRemaining <= 0) return;  // No spins left
+        // Note: spending is handled by playerData.spendSpin() in Game.onActionButton()
 
-        this.gameState.spinsRemaining--;
         this.gameState.slotState = 'spinning';
         this.gameState.slotStoppedCount = 0;
         this.gameState.slotReels = ['?', '?', '?'];
@@ -1785,6 +2313,9 @@ class Renderer {
         this.ctx.lineWidth = 1.5;
         this.ctx.stroke();
 
+        // Apply cosmetic skin effects
+        this.drawBallSkin(ball);
+
         // Show accumulated points above ball (grows with bigger numbers)
         if (ball.points > 0) {
             // Scale font size based on points (12px base, grows up to ~24px)
@@ -1803,6 +2334,113 @@ class Renderer {
             // White text
             this.ctx.fillStyle = '#ffffff';
             this.ctx.fillText(ball.points, ball.x, textY);
+        }
+    }
+
+    drawBallSkin(ball) {
+        const skin = playerData.equippedBallSkin;
+        if (skin === 'default_ball') return;
+
+        const time = Date.now();
+
+        switch (skin) {
+            case 'fire_ball':
+                // Flickering flame particles around the ball
+                const flameCount = 6;
+                for (let i = 0; i < flameCount; i++) {
+                    const angle = (i / flameCount) * Math.PI * 2 + time * 0.005;
+                    const flicker = Math.sin(time * 0.02 + i) * 3;
+                    const dist = ball.radius + 4 + flicker;
+                    const fx = ball.x + Math.cos(angle) * dist;
+                    const fy = ball.y + Math.sin(angle) * dist;
+                    const size = 3 + Math.sin(time * 0.015 + i * 2) * 1.5;
+
+                    const gradient = this.ctx.createRadialGradient(fx, fy, 0, fx, fy, size);
+                    gradient.addColorStop(0, 'rgba(255, 200, 50, 0.9)');
+                    gradient.addColorStop(0.5, 'rgba(255, 100, 20, 0.6)');
+                    gradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+                    this.ctx.fillStyle = gradient;
+                    this.ctx.beginPath();
+                    this.ctx.arc(fx, fy, size, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                break;
+
+            case 'ice_ball':
+                // Frosty aura with ice crystals
+                const frostGlow = this.ctx.createRadialGradient(
+                    ball.x, ball.y, ball.radius * 0.8,
+                    ball.x, ball.y, ball.radius + 8
+                );
+                frostGlow.addColorStop(0, 'rgba(150, 220, 255, 0)');
+                frostGlow.addColorStop(0.5, 'rgba(100, 200, 255, 0.3)');
+                frostGlow.addColorStop(1, 'rgba(50, 150, 255, 0)');
+                this.ctx.fillStyle = frostGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(ball.x, ball.y, ball.radius + 8, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Small ice crystal sparkles
+                for (let i = 0; i < 4; i++) {
+                    const sparkAngle = (i / 4) * Math.PI * 2 + time * 0.002;
+                    const sparkDist = ball.radius + 5;
+                    const sx = ball.x + Math.cos(sparkAngle) * sparkDist;
+                    const sy = ball.y + Math.sin(sparkAngle) * sparkDist;
+                    const sparkAlpha = 0.5 + Math.sin(time * 0.01 + i) * 0.3;
+
+                    this.ctx.fillStyle = `rgba(200, 240, 255, ${sparkAlpha})`;
+                    this.ctx.beginPath();
+                    this.ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                break;
+
+            case 'gold_ball':
+                // Shimmering gold ring
+                const shimmer = Math.sin(time * 0.008) * 0.3 + 0.7;
+                this.ctx.strokeStyle = `rgba(255, 215, 0, ${shimmer})`;
+                this.ctx.lineWidth = 3;
+                this.ctx.beginPath();
+                this.ctx.arc(ball.x, ball.y, ball.radius + 3, 0, Math.PI * 2);
+                this.ctx.stroke();
+
+                // Gold sparkle highlight
+                const sparkX = ball.x - ball.radius * 0.4;
+                const sparkY = ball.y - ball.radius * 0.4;
+                const sparkGrad = this.ctx.createRadialGradient(sparkX, sparkY, 0, sparkX, sparkY, 4);
+                sparkGrad.addColorStop(0, `rgba(255, 255, 200, ${shimmer})`);
+                sparkGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+                this.ctx.fillStyle = sparkGrad;
+                this.ctx.beginPath();
+                this.ctx.arc(sparkX, sparkY, 4, 0, Math.PI * 2);
+                this.ctx.fill();
+                break;
+
+            case 'neon_ball':
+                // Pulsing neon glow (cyan/magenta)
+                const pulse = Math.sin(time * 0.01) * 0.5 + 0.5;
+                const hue = (time * 0.1) % 360;
+
+                // Outer neon glow
+                const neonGlow = this.ctx.createRadialGradient(
+                    ball.x, ball.y, ball.radius,
+                    ball.x, ball.y, ball.radius + 12
+                );
+                neonGlow.addColorStop(0, `hsla(${hue}, 100%, 60%, ${0.4 + pulse * 0.3})`);
+                neonGlow.addColorStop(0.5, `hsla(${(hue + 60) % 360}, 100%, 50%, ${0.2 + pulse * 0.2})`);
+                neonGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                this.ctx.fillStyle = neonGlow;
+                this.ctx.beginPath();
+                this.ctx.arc(ball.x, ball.y, ball.radius + 12, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Bright neon ring
+                this.ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${0.8 + pulse * 0.2})`;
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.arc(ball.x, ball.y, ball.radius + 2, 0, Math.PI * 2);
+                this.ctx.stroke();
+                break;
         }
     }
 
@@ -2182,7 +2820,7 @@ class Game {
         this.renderer = new Renderer(this.canvas, this.gameState, this.particles, this.cameraShake);
         this.renderer.setGame(this);  // Give renderer access to game state for flash/slowmo
         this.slotMachine = new SlotMachine(this.gameState, this.audio);
-        this.slotMachine.onResult = (color, count) => this.spawnBalls(color, count);
+        this.slotMachine.onResult = (color, count) => this.queueBalls(color, count);
 
         // Skill wheel (triggered by x3 basket)
         this.skillWheel = new SkillWheel(this.gameState, this.audio);
@@ -2197,29 +2835,49 @@ class Game {
         // Slow-motion state
         this.slowmoActive = false;
 
+        // Queue system for batched ball spawning
+        this.queuedBalls = [];  // Array of {color, count} objects
+        this.isInGame = false;  // Are we in an active game session?
+        this.sessionPoints = 0;  // Points earned this session
+
         // UI elements
         this.spacebarHint = document.getElementById('spacebar-hint');
         this.actionLabel = document.getElementById('action-label');
-        this.spinCountEl = document.getElementById('spin-count');
+        this.balanceDisplay = document.getElementById('balance-display');
         this.pointsCountEl = document.getElementById('points-count');
+        this.costDisplay = document.getElementById('cost-display');
+        this.freeSpinBadge = document.getElementById('free-spin-badge');
         this.overlay = document.getElementById('overlay');
         this.overlayTitle = document.getElementById('overlay-title');
         this.overlayMessage = document.getElementById('overlay-message');
         this.overlayBtn = document.getElementById('overlay-btn');
+        this.overlayPointsEarned = document.getElementById('overlay-points-earned');
+        this.earnedAmount = document.getElementById('earned-amount');
         this.debugPanel = document.getElementById('debug-panel');
         this.debugStats = document.getElementById('debug-stats');
         this.comboDisplay = document.getElementById('combo-display');
         this.comboText = document.getElementById('combo-text');
         this.settingsPanel = document.getElementById('settings-panel');
+        this.queueDisplay = document.getElementById('queue-display');
+        this.queueItems = document.getElementById('queue-items');
+        this.queueCount = document.getElementById('queue-count');
+        this.header = document.getElementById('header');
+        this.controls = document.getElementById('controls');
 
         // Timing
         this.lastTime = performance.now();
         this.frameCount = 0;
         this.fpsTime = 0;
 
+        // Apply saved settings
+        JUICE.SOUND_ENABLED = playerData.settings.sound;
+        JUICE.HAPTICS_ENABLED = playerData.settings.haptics;
+        JUICE.PERFORMANCE_MODE = playerData.settings.performanceMode;
+        this.audio.enabled = playerData.settings.sound;
+
         this.setupEventListeners();
         this.resizeCanvas();
-        this.init();
+        // Don't call init() - wait for player to start game from menu
         this.startGameLoop();
     }
 
@@ -2230,52 +2888,39 @@ class Game {
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
                 e.preventDefault();
-                this.onActionButton();
+                if (this.isInGame) {
+                    this.onSpinButton();
+                }
+            }
+            if (e.code === 'ArrowDown') {
+                e.preventDefault();
+                if (this.isInGame) {
+                    this.onLaunchButton();
+                }
             }
             if (e.key === 'd' || e.key === 'D') {
                 this.debugPanel.classList.toggle('hidden');
             }
         });
 
-        // Touch/click for spacebar hint (mobile)
-        this.spacebarHint.addEventListener('click', () => this.onActionButton());
+        // Touch/click for spacebar hint (mobile) - spins slot
+        this.spacebarHint.addEventListener('click', () => this.onSpinButton());
         this.spacebarHint.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            this.onActionButton();
+            this.onSpinButton();
         });
 
-        // Restart
-        document.getElementById('restart-btn').addEventListener('click', () => this.restart());
+        // Forfeit button - end game and return to menu
+        document.getElementById('forfeit-btn').addEventListener('click', () => {
+            if (this.isInGame) {
+                this.forfeitGame();
+            }
+        });
 
-        // Overlay button
+        // Overlay button - back to menu
         this.overlayBtn.addEventListener('click', () => {
             this.hideOverlay();
-            this.restart();
-        });
-
-        // Settings
-        document.getElementById('settings-btn').addEventListener('click', () => {
-            this.settingsPanel.classList.remove('hidden');
-            this.audio.uiClick();
-        });
-
-        document.getElementById('settings-close').addEventListener('click', () => {
-            this.settingsPanel.classList.add('hidden');
-            this.audio.uiClick();
-        });
-
-        // Settings toggles
-        document.getElementById('sound-toggle').addEventListener('change', (e) => {
-            this.audio.enabled = e.target.checked;
-            JUICE.SOUND_ENABLED = e.target.checked;
-        });
-
-        document.getElementById('haptics-toggle').addEventListener('change', (e) => {
-            JUICE.HAPTICS_ENABLED = e.target.checked;
-        });
-
-        document.getElementById('perf-toggle').addEventListener('change', (e) => {
-            JUICE.PERFORMANCE_MODE = e.target.checked;
+            this.endGame();
         });
     }
 
@@ -2301,19 +2946,73 @@ class Game {
         generateLevel(this.gameState, this.canvas.width, this.canvas.height);
         this.slotMachine.reset();
         this.skillWheel.reset();
+        this.queuedBalls = [];
+        this.sessionPoints = 0;
         this.updateUI();
+        this.updateQueueUI();
     }
 
-    restart() {
+    // Called from menu when player presses PLAY
+    startNewGame() {
+        this.isInGame = true;
+        this.audio.init();  // Initialize audio on game start
+
+        // Hide any overlays from previous game
+        this.overlay.classList.add('hidden');
+        this.overlayPointsEarned.classList.add('hidden');
+
+        // Show game UI
+        this.header.classList.remove('hidden');
+        this.canvas.classList.remove('hidden');
+        this.controls.classList.remove('hidden');
+
+        // Initialize game
+        this.resizeCanvas();
         this.init();
-        this.audio.uiClick();
+
+        playerData.totalGamesPlayed++;
+        playerData.save();
     }
 
-    onActionButton() {
+    // Called when player forfeits or game ends
+    endGame() {
+        this.isInGame = false;
+
+        // Hide game UI
+        this.header.classList.add('hidden');
+        this.canvas.classList.add('hidden');
+        this.controls.classList.add('hidden');
+        this.queueDisplay.classList.add('hidden');
+
+        // Check if player is out of points
+        if (!playerData.canAffordSpin()) {
+            menuManager.showAdPrompt();
+        } else {
+            menuManager.showMainMenu();
+        }
+    }
+
+    forfeitGame() {
+        // Forfeit = lose all session points, no reward
+        showToast(`Forfeited - 0 points earned`, 'warning');
+        this.gameState.points = 0;  // Clear session points
+        this.gameState.isGameOver = true;
+        this.endGame();
+    }
+
+    // SPACE - spin slot to pile up balls
+    onSpinButton() {
         // Initialize audio on first interaction (mobile policy)
         this.audio.init();
 
-        if (this.gameState.isGameOver) return;
+        if (!this.isInGame || this.gameState.isGameOver) return;
+
+        // Block spinning during Fever Time (all blocks cleared, balls still bouncing)
+        // Player can still launch queued balls with DOWN arrow
+        if (this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0) {
+            showToast('Fever Time! No spinning allowed', 'warning');
+            return;
+        }
 
         // Handle skill wheel - press to skip straight to result
         if (this.gameState.skillWheelState === 'spinning') {
@@ -2326,19 +3025,140 @@ class Game {
             return;
         }
 
-        // Handle slot machine - press to skip straight to result
-        if (this.gameState.slotState === 'idle') {
-            if (!this.gameState.canSpawnBall()) return;
-            this.slotMachine.startSpin();
-            this.audio.uiClick();
-        } else if (this.gameState.slotState === 'spinning' || this.gameState.slotState === 'stopping') {
+        // Handle slot machine
+        if (this.gameState.slotState === 'spinning' || this.gameState.slotState === 'stopping') {
             // Skip straight to result
             this.slotMachine.skipToResult();
-        } else if (this.gameState.slotState === 'result') {
+            return;
+        }
+        if (this.gameState.slotState === 'result') {
             // Skip result display
             this.slotMachine.skipResultDisplay();
+            return;
         }
+
+        // Slot is idle - spin to add more balls to queue
+        if (this.gameState.slotState === 'idle') {
+            if (!playerData.canAffordSpin()) {
+                showToast('Not enough points!', 'error');
+                return;
+            }
+            // Spend the spin cost
+            playerData.spendSpin();
+            this.slotMachine.startSpin();
+            this.audio.uiClick();
+            this.updateUI();
+        }
+    }
+
+    // DOWN ARROW - launch all queued balls
+    onLaunchButton() {
+        this.audio.init();
+
+        if (!this.isInGame || this.gameState.isGameOver) return;
+        if (this.gameState.slotState !== 'idle') return;  // Can't launch while slot is spinning
+
+        if (this.queuedBalls.length > 0) {
+            this.launchQueuedBalls();
+            this.audio.uiClick();
+            this.updateUI();
+        }
+    }
+
+    // Queue balls instead of spawning immediately
+    queueBalls(color, count) {
+        this.queuedBalls.push({ color, count });
+        this.updateQueueUI();
+        this.updateUI();  // Update action label to show "LAUNCH"
+    }
+
+    // Launch all queued balls one by one from moving base
+    launchQueuedBalls() {
+        if (this.queuedBalls.length === 0) return;
+
+        // Check for pending skill (applies to all balls in this launch)
+        const pendingSkill = this.gameState.pendingSkill;
+        this.gameState.pendingSkill = null;
+
+        // Flatten queued balls into individual balls
+        const allBalls = [];
+        for (const queued of this.queuedBalls) {
+            // Split skill = 3x balls
+            const count = pendingSkill === 'split' ? queued.count * 3 : queued.count;
+            for (let i = 0; i < count; i++) {
+                allBalls.push(queued.color);
+            }
+        }
+
+        this.queuedBalls = [];
+        this.updateQueueUI();
+
+        // Spawn balls one by one with quick delay (each from current base position)
+        const spawnDelay = 80; // ms between each ball
+        allBalls.forEach((color, index) => {
+            setTimeout(() => {
+                this.spawnSingleBall(color, pendingSkill);
+            }, index * spawnDelay);
+        });
+    }
+
+    // Spawn a single ball from current base position
+    spawnSingleBall(color, skill = null) {
+        const baseX = this.gameState.baseX;
+        const baseY = CONFIG.BASE_Y;
+        const angle = Math.PI / 2;  // Always shoot straight down
+        const isRainbow = color === 'rainbow';
+
+        const ballType = isRainbow ? 'rainball' : 'normal';
+        const ball = new Ball(baseX, baseY, color, ballType, angle);
+
+        // Apply skill if any (split already handled in launchQueuedBalls)
+        if (skill === 'explosion') {
+            ball.hasExplosion = true;
+        } else if (skill === 'bulldoze') {
+            ball.hasBulldoze = true;
+            ball.baseRadius *= 2;
+        }
+
+        this.gameState.balls.push(ball);
+        this.gameState.isRunning = true;
+
+        // Spawn effects (lighter effects for rapid fire)
+        if (isRainbow) {
+            this.particles.emitRainbow(baseX, baseY, 8);
+            this.audio.ballSpawnRainball();
+        } else {
+            this.particles.emit(baseX, baseY, CONFIG.COLORS[color.toUpperCase()], 6);
+            this.audio.ballSpawnNormal();
+        }
+
         this.updateUI();
+    }
+
+    // Update the queue display UI
+    updateQueueUI() {
+        if (this.queuedBalls.length === 0) {
+            this.queueDisplay.classList.add('hidden');
+            return;
+        }
+
+        this.queueDisplay.classList.remove('hidden');
+
+        // Clear existing items
+        this.queueItems.innerHTML = '';
+
+        // Add ball icons for each queued ball
+        let totalBalls = 0;
+        for (const queued of this.queuedBalls) {
+            for (let i = 0; i < queued.count; i++) {
+                const ball = document.createElement('div');
+                ball.className = `queue-ball ${queued.color}`;
+                this.queueItems.appendChild(ball);
+                totalBalls++;
+            }
+        }
+
+        this.queueCount.textContent = totalBalls;
     }
 
     spawnBalls(color, count) {
@@ -2853,12 +3673,15 @@ class Game {
     }
 
     checkGameEnd() {
+        // Already ended (forfeit, etc.)
+        if (this.gameState.isGameOver) return;
+
         const remaining = CONFIG.WIN_REQUIRES_ALL_BLOCKS
             ? this.gameState.remainingBlocks
             : this.gameState.remainingColoredBlocks;
 
         // Win condition: all blocks destroyed AND all balls in baskets
-        if (remaining === 0 && this.gameState.balls.length === 0) {
+        if (remaining === 0 && this.gameState.balls.length === 0 && this.queuedBalls.length === 0) {
             this.gameState.isGameOver = true;
             this.gameState.hasWon = true;
             this.showOverlay(true);
@@ -2866,9 +3689,10 @@ class Game {
             return;
         }
 
-        // Lose condition: no spins left and no active balls
-        if (this.gameState.spinsRemaining <= 0 &&
+        // Lose condition: can't afford spin AND no active balls AND no queued balls AND slot is idle
+        if (!playerData.canAffordSpin() &&
             this.gameState.balls.length === 0 &&
+            this.queuedBalls.length === 0 &&
             this.gameState.slotState === 'idle') {
             this.gameState.isGameOver = true;
             this.gameState.hasWon = false;
@@ -2878,10 +3702,24 @@ class Game {
     }
 
     updateUI() {
-        this.spinCountEl.textContent = `${this.gameState.spinsRemaining}`;
-        this.pointsCountEl.textContent = `${this.gameState.points}`;
+        // Update balance display (persistent currency)
+        this.balanceDisplay.textContent = playerData.points.toLocaleString();
 
-        // Action label
+        // Update session points display
+        this.sessionPoints = this.gameState.points;
+        this.pointsCountEl.textContent = this.sessionPoints.toLocaleString();
+
+        // Update spin cost display
+        if (playerData.freeSpins > 0) {
+            this.costDisplay.classList.add('hidden');
+            this.freeSpinBadge.classList.remove('hidden');
+        } else {
+            this.costDisplay.classList.remove('hidden');
+            this.costDisplay.textContent = `-${ECONOMY.SPIN_COST}`;
+            this.freeSpinBadge.classList.add('hidden');
+        }
+
+        // Action label - SPACE always spins, DOWN launches
         if (this.gameState.slotState === 'idle') {
             this.actionLabel.textContent = 'to SPIN';
             this.spacebarHint.classList.remove('active');
@@ -2919,25 +3757,30 @@ class Game {
 
         this.overlay.classList.remove('hidden');
         this.overlayTitle.className = won ? 'win' : 'lose';
-        this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'GAME OVER';
+        this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'SESSION END';
 
-        const basePoints = this.gameState.points;
+        const earnedPoints = this.sessionPoints;
 
-        if (won) {
-            // Bonus multiplier for remaining spins: total + total * 0.(spins)
-            const spinsLeft = this.gameState.spinsRemaining;
-            const multiplier = 1 + (spinsLeft * 0.1);
-            const finalPoints = Math.floor(basePoints * multiplier);
-            this.gameState.points = finalPoints;
+        if (earnedPoints > 0) {
+            // Add session points to player's balance
+            playerData.addPoints(earnedPoints);
 
-            if (spinsLeft > 0) {
-                this.overlayMessage.textContent = `${basePoints} × ${multiplier.toFixed(1)} = ${finalPoints} points!`;
+            // Show earned points
+            this.overlayPointsEarned.classList.remove('hidden');
+            this.earnedAmount.textContent = `+${earnedPoints.toLocaleString()}`;
+
+            if (won) {
+                this.overlayMessage.textContent = 'All blocks cleared!';
             } else {
-                this.overlayMessage.textContent = `Final Score: ${finalPoints} points!`;
+                this.overlayMessage.textContent = 'Better luck next time!';
             }
         } else {
-            this.overlayMessage.textContent = `Score: ${basePoints} points - Out of spins!`;
+            this.overlayPointsEarned.classList.add('hidden');
+            this.overlayMessage.textContent = won ? 'All blocks cleared!' : 'No points earned.';
         }
+
+        // Update button text
+        this.overlayBtn.textContent = 'BACK TO MENU';
     }
 
     hideOverlay() {
@@ -2972,5 +3815,12 @@ class Game {
 // ===========================================
 
 window.addEventListener('DOMContentLoaded', () => {
+    // Create menu manager first
+    menuManager = new MenuManager();
+
+    // Create game instance (starts on main menu)
     window.game = new Game();
+
+    // Show main menu
+    menuManager.showMainMenu();
 });

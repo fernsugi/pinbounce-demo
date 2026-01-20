@@ -8,21 +8,61 @@
 </head>
 <body>
     <div id="game-container">
-        <!-- Header UI -->
-        <div id="header">
+        <!-- Main Menu -->
+        <div id="main-menu">
+            <div id="menu-content">
+                <h1 id="menu-title">PIN BOUNCE!</h1>
+                <div id="menu-balance">
+                    <span class="balance-icon">💰</span>
+                    <span id="menu-points">5000</span>
+                    <span class="balance-label">points</span>
+                </div>
+                <div id="menu-free-spins" class="hidden">
+                    <span class="free-spin-icon">🎰</span>
+                    <span id="menu-free-spin-count">0</span>
+                    <span class="free-spin-label">free spins</span>
+                </div>
+                <div id="daily-reward-banner" class="hidden">
+                    <span>🎁 Daily Reward Available!</span>
+                    <button id="claim-daily-btn" class="btn-reward">CLAIM 2,500</button>
+                </div>
+                <div id="menu-buttons">
+                    <button id="play-btn" class="btn-primary btn-large">PLAY</button>
+                    <button id="shop-btn" class="btn-secondary btn-large">SHOP</button>
+                    <button id="menu-settings-btn" class="btn-secondary btn-large">SETTINGS</button>
+                </div>
+                <div id="menu-stats">
+                    <div class="menu-stat">
+                        <span class="stat-value" id="stat-games">0</span>
+                        <span class="stat-label">Games</span>
+                    </div>
+                    <div class="menu-stat">
+                        <span class="stat-value" id="stat-highscore">0</span>
+                        <span class="stat-label">Best</span>
+                    </div>
+                    <div class="menu-stat">
+                        <span class="stat-value" id="stat-total">0</span>
+                        <span class="stat-label">Total Earned</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Header UI (in-game) -->
+        <div id="header" class="hidden">
             <div class="stat">
-                <span class="label">Spins</span>
-                <span id="spin-count">10</span>
+                <span class="label">Balance</span>
+                <span id="balance-display">5000</span>
             </div>
             <div id="title">PIN BOUNCE!</div>
             <div class="stat">
-                <span class="label">Points</span>
+                <span class="label">Session</span>
                 <span id="points-count">0</span>
             </div>
         </div>
 
         <!-- Main Canvas -->
-        <canvas id="game-canvas"></canvas>
+        <canvas id="game-canvas" class="hidden"></canvas>
 
         <!-- Combo Display (floating) -->
         <div id="combo-display" class="hidden">
@@ -30,13 +70,24 @@
         </div>
 
         <!-- Controls -->
-        <div id="controls">
+        <div id="controls" class="hidden">
             <div id="spacebar-hint">
                 <span class="key">SPACE</span>
                 <span id="action-label">to SPIN</span>
             </div>
-            <button id="settings-btn" class="btn-icon" title="Settings">⚙</button>
-            <button id="restart-btn" class="btn-secondary">↻</button>
+            <div id="spin-cost">
+                <span id="cost-display">-100</span>
+                <span id="free-spin-badge" class="hidden">FREE</span>
+            </div>
+            <button id="forfeit-btn" class="btn-danger">FORFEIT</button>
+        </div>
+
+        <!-- Queued Spins Display -->
+        <div id="queue-display" class="hidden">
+            <div id="queue-title">QUEUED BALLS</div>
+            <div id="queue-items"></div>
+            <div id="queue-total">Total: <span id="queue-count">0</span> balls</div>
+            <div id="queue-hint">Press <span class="key-hint">↓</span> to launch!</div>
         </div>
 
         <!-- Slot Machine Overlay -->
@@ -71,7 +122,81 @@
             <div id="overlay-content">
                 <h2 id="overlay-title">LEVEL CLEAR!</h2>
                 <p id="overlay-message">Great job!</p>
-                <button id="overlay-btn" class="btn-primary">PLAY AGAIN</button>
+                <div id="overlay-points-earned" class="hidden">
+                    <span class="earned-label">You earned</span>
+                    <span id="earned-amount">0</span>
+                    <span class="earned-label">points!</span>
+                </div>
+                <button id="overlay-btn" class="btn-primary">BACK TO MENU</button>
+            </div>
+        </div>
+
+        <!-- Shop Panel -->
+        <div id="shop-panel" class="hidden">
+            <div id="shop-content">
+                <h3>SHOP</h3>
+                <div id="shop-balance">
+                    <span>💰</span>
+                    <span id="shop-points">5000</span>
+                </div>
+
+                <!-- Free Spins Section -->
+                <div class="shop-section">
+                    <h4>Free Spins</h4>
+                    <div class="shop-item">
+                        <div class="item-info">
+                            <span class="item-icon">🎰</span>
+                            <span class="item-name">5x Free Spins</span>
+                        </div>
+                        <button id="buy-spins-btn" class="btn-purchase">$0.99</button>
+                    </div>
+                </div>
+
+                <!-- Ball Skins Section -->
+                <div class="shop-section">
+                    <h4>Ball Skins</h4>
+                    <div class="shop-grid" id="ball-skins-grid">
+                        <div class="cosmetic-item" data-id="fire_ball" data-type="ball" data-price="500" data-currency="points">
+                            <div class="cosmetic-preview fire"></div>
+                            <span class="cosmetic-name">Fire</span>
+                            <span class="cosmetic-price">500💰</span>
+                        </div>
+                        <div class="cosmetic-item" data-id="ice_ball" data-type="ball" data-price="500" data-currency="points">
+                            <div class="cosmetic-preview ice"></div>
+                            <span class="cosmetic-name">Ice</span>
+                            <span class="cosmetic-price">500💰</span>
+                        </div>
+                        <div class="cosmetic-item" data-id="gold_ball" data-type="ball" data-price="1.99" data-currency="usd">
+                            <div class="cosmetic-preview gold"></div>
+                            <span class="cosmetic-name">Gold</span>
+                            <span class="cosmetic-price rare">$1.99</span>
+                        </div>
+                        <div class="cosmetic-item" data-id="neon_ball" data-type="ball" data-price="1.99" data-currency="usd">
+                            <div class="cosmetic-preview neon"></div>
+                            <span class="cosmetic-name">Neon</span>
+                            <span class="cosmetic-price rare">$1.99</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trails Section -->
+                <div class="shop-section">
+                    <h4>Trails</h4>
+                    <div class="shop-grid" id="trails-grid">
+                        <div class="cosmetic-item" data-id="spark_trail" data-type="trail" data-price="300" data-currency="points">
+                            <div class="cosmetic-preview spark"></div>
+                            <span class="cosmetic-name">Spark</span>
+                            <span class="cosmetic-price">300💰</span>
+                        </div>
+                        <div class="cosmetic-item" data-id="rainbow_trail" data-type="trail" data-price="0.99" data-currency="usd">
+                            <div class="cosmetic-preview rainbow"></div>
+                            <span class="cosmetic-name">Rainbow</span>
+                            <span class="cosmetic-price rare">$0.99</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="shop-close" class="btn-secondary">Close</button>
             </div>
         </div>
 
@@ -94,9 +219,50 @@
                     <input type="checkbox" id="perf-toggle">
                     <span class="toggle-slider"></span>
                 </label>
+                <hr class="settings-divider">
+                <button id="reset-progress-btn" class="btn-danger-small">Reset All Progress</button>
                 <button id="settings-close" class="btn-secondary">Close</button>
             </div>
         </div>
+
+        <!-- Ad Prompt Overlay -->
+        <div id="ad-prompt" class="hidden">
+            <div id="ad-content">
+                <h3>Out of Points!</h3>
+                <p>Watch a short ad to earn 2,500 points?</p>
+                <div id="ad-buttons">
+                    <button id="watch-ad-btn" class="btn-primary">Watch Ad 📺</button>
+                    <button id="no-ad-btn" class="btn-secondary">No Thanks</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dummy Ad Player -->
+        <div id="ad-player" class="hidden">
+            <div id="ad-player-content">
+                <div id="ad-placeholder">
+                    <span>📺 Advertisement</span>
+                    <p>This is a dummy ad placeholder</p>
+                </div>
+                <div id="ad-timer">Skip in <span id="ad-countdown">5</span>s</div>
+                <button id="ad-skip-btn" class="btn-secondary hidden">Skip Ad</button>
+            </div>
+        </div>
+
+        <!-- Purchase Confirmation -->
+        <div id="purchase-confirm" class="hidden">
+            <div id="purchase-content">
+                <h3 id="purchase-title">Confirm Purchase</h3>
+                <p id="purchase-desc">Buy this item?</p>
+                <div id="purchase-buttons">
+                    <button id="confirm-purchase-btn" class="btn-primary">Confirm</button>
+                    <button id="cancel-purchase-btn" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container"></div>
 
         <!-- Debug Panel (toggle with D key) -->
         <div id="debug-panel" class="hidden">
