@@ -645,7 +645,8 @@ class GameState {
         this.slotStoppedCount = 0;
 
         // Skill wheel state
-        this.skillWheelState = 'idle';  // idle, ready, spinning, result
+        this.skillWheelState = 'idle';  // idle, spinning, result
+        this.skillWheelCooldown = 0;    // Timestamp when cooldown ends
 
         // Debug stats
         this.debugStats = {
@@ -674,6 +675,7 @@ class GameState {
         this.slotReels = ['?', '?', '?'];
         this.slotStoppedCount = 0;
         this.skillWheelState = 'idle';
+        this.skillWheelCooldown = 0;
     }
 
     get activeBallCount() {
@@ -793,6 +795,7 @@ class Ball {
         // Bulldoze ability lost on outer wall hit (with spawn grace period)
         if (hitOuterWall && this.hasBulldoze && timeSinceSpawn > 200) {
             this.hasBulldoze = false;
+            this.baseRadius = this.getRadiusByType(this.type);  // Shrink back to normal
         }
 
         // Bottom: no collision - balls fall into baskets
@@ -1167,6 +1170,7 @@ class SkillWheel {
     hide() {
         this.overlay.classList.add('hidden');
         this.gameState.skillWheelState = 'idle';
+        this.gameState.skillWheelCooldown = Date.now() + 2000;  // 2 second cooldown
     }
 
     stopSpin() {
@@ -2192,8 +2196,9 @@ class Game {
             return true;  // Keep ball
         });
 
-        // Show skill wheel if triggered (and there are still balls on screen)
-        if (triggerSkillWheel && this.gameState.balls.length > 0 && this.gameState.skillWheelState === 'idle') {
+        // Show skill wheel if triggered (and there are still balls on screen, and cooldown passed)
+        const cooldownPassed = Date.now() > this.gameState.skillWheelCooldown;
+        if (triggerSkillWheel && this.gameState.balls.length > 0 && this.gameState.skillWheelState === 'idle' && cooldownPassed) {
             this.skillWheel.show();
         }
     }
@@ -2228,6 +2233,7 @@ class Game {
                             this.audio.blockBreak();
                         }
                         ball.hasBulldoze = false;
+                        ball.baseRadius = ball.getRadiusByType(ball.type);  // Shrink back
                     }
                 }
             }
@@ -2388,6 +2394,7 @@ class Game {
                 ball.hasExplosion = true;
             } else if (skill === 'bulldoze') {
                 ball.hasBulldoze = true;
+                ball.baseRadius *= 2;  // Double size like old blue ball
             } else if (skill === 'split') {
                 // Split each ball into 3 - spawn 2 more balls at each ball's position
                 const angle1 = Math.atan2(ball.vy, ball.vx) - 0.5;
