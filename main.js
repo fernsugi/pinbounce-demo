@@ -2625,10 +2625,24 @@ class Game {
         this.overlay.classList.remove('hidden');
         this.overlayTitle.className = won ? 'win' : 'lose';
         this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'GAME OVER';
-        const points = this.gameState.points;
-        this.overlayMessage.textContent = won
-            ? `Final Score: ${points} points!`
-            : `Score: ${points} points - Out of spins!`;
+
+        const basePoints = this.gameState.points;
+
+        if (won) {
+            // Bonus multiplier for remaining spins: total + total * 0.(spins)
+            const spinsLeft = this.gameState.spinsRemaining;
+            const multiplier = 1 + (spinsLeft * 0.1);
+            const finalPoints = Math.floor(basePoints * multiplier);
+            this.gameState.points = finalPoints;
+
+            if (spinsLeft > 0) {
+                this.overlayMessage.textContent = `${basePoints} × ${multiplier.toFixed(1)} = ${finalPoints} points!`;
+            } else {
+                this.overlayMessage.textContent = `Final Score: ${finalPoints} points!`;
+            }
+        } else {
+            this.overlayMessage.textContent = `Score: ${basePoints} points - Out of spins!`;
+        }
     }
 
     hideOverlay() {
