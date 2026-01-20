@@ -2129,13 +2129,16 @@ class Game {
         const pendingSkill = this.gameState.pendingSkill;
         this.gameState.pendingSkill = null;  // Clear it now
 
+        // Split pending skill = spawn 3x the balls
+        const actualCount = pendingSkill === 'split' ? count * 3 : count;
+
         // Delay between ball spawns (ms)
         const spawnDelay = 150;
 
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < actualCount; i++) {
             setTimeout(() => {
                 // Slight horizontal offset for multiple balls
-                const xOffset = count > 1 ? (i - (count - 1) / 2) * 15 : 0;
+                const xOffset = actualCount > 1 ? (i - (actualCount - 1) / 2) * 15 : 0;
                 const cx = baseX + xOffset;
                 const cy = baseY;
 
@@ -2144,14 +2147,13 @@ class Game {
                 const ballType = isRainbow ? 'rainball' : 'normal';
                 const ball = new Ball(cx, cy, color, ballType, ballAngle);
 
-                // Apply pending skill if any
+                // Apply pending skill if any (split already handled via actualCount)
                 if (pendingSkill === 'explosion') {
                     ball.hasExplosion = true;
                 } else if (pendingSkill === 'bulldoze') {
                     ball.hasBulldoze = true;
                     ball.baseRadius *= 2;
                 }
-                // Split doesn't make sense for new spawns, skip it
 
                 this.gameState.balls.push(ball);
                 this.gameState.isRunning = true;
