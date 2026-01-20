@@ -2289,9 +2289,11 @@ class Game {
                                 this.particles.emitRainbow(block.centerX, block.centerY, JUICE.PARTICLE_SPAWN_BURST);
                             }
 
-                            // Pass through - just push out
-                            ball.x += collision.nx * collision.penetration;
-                            ball.y += collision.ny * collision.penetration;
+                            // Bulldoze: pass through without bouncing or position adjustment
+                            if (!ball.hasBulldoze) {
+                                ball.x += collision.nx * collision.penetration;
+                                ball.y += collision.ny * collision.penetration;
+                            }
                         } else {
                             reflectVelocity(ball, collision.nx, collision.ny);
                             ball.x += collision.nx * collision.penetration;
@@ -2377,7 +2379,11 @@ class Game {
     applySkillToAllBalls(skill) {
         if (!skill) return;  // MISS - no skill applied
 
-        for (const ball of this.gameState.balls) {
+        // Copy current balls array to avoid infinite loop when adding new balls
+        const currentBalls = [...this.gameState.balls];
+        const newBalls = [];
+
+        for (const ball of currentBalls) {
             if (skill === 'explosion') {
                 ball.hasExplosion = true;
             } else if (skill === 'bulldoze') {
@@ -2402,11 +2408,16 @@ class Game {
                 ball2.boosted = ball.boosted;
                 ball2.normalSpeed = ball.normalSpeed;
 
-                this.gameState.balls.push(ball1, ball2);
+                newBalls.push(ball1, ball2);
 
                 // Effects for split
                 this.particles.emit(ball.x, ball.y, ball.getDisplayColor() || '#ffc312', 10);
             }
+        }
+
+        // Add split balls after loop
+        if (newBalls.length > 0) {
+            this.gameState.balls.push(...newBalls);
         }
 
         // Visual feedback
