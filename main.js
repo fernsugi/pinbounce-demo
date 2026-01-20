@@ -648,6 +648,9 @@ class GameState {
         this.skillWheelState = 'idle';  // idle, spinning, result
         this.skillWheelCooldown = 0;    // Timestamp when cooldown ends
 
+        // Basket order (shuffled each game)
+        this.basketOrder = [0, 1, 2, 3, 4];  // Will be shuffled on reset
+
         // Debug stats
         this.debugStats = {
             totalSpins: 0,
@@ -676,6 +679,12 @@ class GameState {
         this.slotStoppedCount = 0;
         this.skillWheelState = 'idle';
         this.skillWheelCooldown = 0;
+        // Shuffle basket order
+        this.basketOrder = [0, 1, 2, 3, 4];
+        for (let i = this.basketOrder.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.basketOrder[i], this.basketOrder[j]] = [this.basketOrder[j], this.basketOrder[i]];
+        }
     }
 
     get activeBallCount() {
@@ -1431,23 +1440,28 @@ class Renderer {
         const basketHeight = 40;
         const basketWidth = this.canvas.width / 5;
         const y = this.canvas.height - basketHeight;
-        const multipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
-        const colors = ['#2d2d5a', '#2d5a3d', '#5a2d5a', '#2d5a3d', '#2d2d5a'];
-        const labels = ['SKILL', 'x1', 'x3', 'x1', 'SKILL'];
+        // Base basket types (indexed by basketOrder)
+        const baseMultipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
+        const baseColors = ['#2d2d5a', '#2d5a3d', '#5a2d5a', '#2d5a3d', '#2d2d5a'];
+        const baseLabels = ['SKILL', 'x1', 'x3', 'x1', 'SKILL'];
 
         for (let i = 0; i < 5; i++) {
             const x = i * basketWidth;
+            const basketType = this.gameState.basketOrder[i];
+            const multiplier = baseMultipliers[basketType];
+            const color = baseColors[basketType];
+            const label = baseLabels[basketType];
 
             // Basket background
             const gradient = this.ctx.createLinearGradient(x, y, x, this.canvas.height);
-            gradient.addColorStop(0, colors[i]);
+            gradient.addColorStop(0, color);
             gradient.addColorStop(1, '#0a0a15');
             this.ctx.fillStyle = gradient;
             this.ctx.fillRect(x, y, basketWidth, basketHeight);
 
             // Basket border
-            this.ctx.strokeStyle = multipliers[i] === 3 ? '#9b59b6' :
-                                   multipliers[i] === 1 ? '#27ae60' : '#5555aa';
+            this.ctx.strokeStyle = multiplier === 3 ? '#9b59b6' :
+                                   multiplier === 1 ? '#27ae60' : '#5555aa';
             this.ctx.lineWidth = 2;
             this.ctx.strokeRect(x, y, basketWidth, basketHeight);
 
@@ -1455,9 +1469,9 @@ class Renderer {
             this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillStyle = multipliers[i] === 3 ? '#e056fd' :
-                                 multipliers[i] === 1 ? '#2ecc71' : '#8888ff';
-            this.ctx.fillText(labels[i], x + basketWidth / 2, y + basketHeight / 2);
+            this.ctx.fillStyle = multiplier === 3 ? '#e056fd' :
+                                 multiplier === 1 ? '#2ecc71' : '#8888ff';
+            this.ctx.fillText(label, x + basketWidth / 2, y + basketHeight / 2);
         }
     }
 
@@ -2153,17 +2167,18 @@ class Game {
         const basketHeight = 40;
         const basketWidth = this.canvas.width / 5;
         const basketY = this.canvas.height - basketHeight;
-        const multipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
+        const baseMultipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
         let triggerSkillWheel = false;
 
         // Check each ball
         this.gameState.balls = this.gameState.balls.filter(ball => {
             // Check if ball entered basket zone
             if (ball.y + ball.radius >= basketY) {
-                // Determine which basket
+                // Determine which basket (using shuffled order)
                 const basketIndex = Math.floor(ball.x / basketWidth);
                 const clampedIndex = Math.max(0, Math.min(4, basketIndex));
-                const multiplier = multipliers[clampedIndex];
+                const basketType = this.gameState.basketOrder[clampedIndex];
+                const multiplier = baseMultipliers[basketType];
 
                 // Add points (ball.points * multiplier)
                 const earnedPoints = ball.points * multiplier;
