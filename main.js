@@ -28,8 +28,7 @@ const CONFIG = {
 
     // Ball movement speed
     BALL_SPEED: 2,
-    BALL_BOOST_MULTIPLIER: 2.5,  // Initial speed boost when spawning
-    BALL_BOOST_DURATION: 1500,   // Boost lasts 1.5 seconds
+    BALL_BOOST_MULTIPLIER: 2.5,  // Initial speed boost (lost on first wall hit)
     GRAVITY: 0.05,  // Downward acceleration per frame
 
     // Base (spawn point) position - top center (X is calculated dynamically)
@@ -763,18 +762,7 @@ class Ball {
         // Apply gravity
         this.vy += CONFIG.GRAVITY;
 
-        // Check if boost duration has expired
         const timeSinceSpawn = Date.now() - this.spawnTime;
-        if (this.boosted && timeSinceSpawn > CONFIG.BALL_BOOST_DURATION) {
-            this.boosted = false;
-            // Reduce speed to normal (preserve direction, adjust magnitude)
-            const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-            if (currentSpeed > this.normalSpeed) {
-                const factor = this.normalSpeed / currentSpeed;
-                this.vx *= factor;
-                this.vy *= factor;
-            }
-        }
 
         this.x += this.vx;
         this.y += this.vy;
@@ -799,10 +787,21 @@ class Ball {
             hitOuterWall = true;
         }
 
+        // Lose boost on outer wall hit (with spawn grace period)
+        if (hitOuterWall && this.boosted && timeSinceSpawn > 200) {
+            this.boosted = false;
+            // Slow down to normal speed
+            const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            if (currentSpeed > this.normalSpeed) {
+                const factor = this.normalSpeed / currentSpeed;
+                this.vx *= factor;
+                this.vy *= factor;
+            }
+        }
+
         // Blue loses piercing on outer wall hit (with spawn grace period)
         if (hitOuterWall && this.bluePiercing && timeSinceSpawn > 200) {
             this.bluePiercing = false;
-            this.boosted = false;  // Also end boost
             // Slow down to normal (non-blue) speed
             this.normalSpeed = CONFIG.BALL_SPEED;
             const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
@@ -2050,6 +2049,17 @@ class Game {
                     reflectVelocity(ball, collision.nx, collision.ny);
                     ball.x += collision.nx * collision.penetration;
                     ball.y += collision.ny * collision.penetration;
+
+                    // Lose boost on obstacle wall hit
+                    if (ball.boosted) {
+                        ball.boosted = false;
+                        const currentSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+                        if (currentSpeed > ball.normalSpeed) {
+                            const factor = ball.normalSpeed / currentSpeed;
+                            ball.vx *= factor;
+                            ball.vy *= factor;
+                        }
+                    }
 
                     // Blue special: break wall once before losing piercing
                     if (ball.bluePiercing) {
