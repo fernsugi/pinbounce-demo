@@ -66,6 +66,7 @@ const CONFIG = {
         YELLOW: '#ffc312',
         BLUE: '#3498db',
         NEUTRAL: '#7f8c8d',
+        WHITE: '#ffffff',
         RAINBALL: 'rainbow'
     },
 
@@ -571,10 +572,11 @@ class GameState {
     constructor() {
         this.balls = [];
         this.blocks = [];
+        this.motherBall = null;  // Special white ball that never dies
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
-        this.arrowAngle = -Math.PI / 2;
+        this.arrowAngle = -Math.PI / 2;  // Now used for indicator rotation around mother ball
 
         // Slot machine state
         this.slotState = 'idle';
@@ -595,6 +597,7 @@ class GameState {
 
     reset() {
         this.balls = [];
+        this.motherBall = null;  // Will be recreated in init
         this.isRunning = false;
         this.isGameOver = false;
         this.hasWon = false;
@@ -730,7 +733,8 @@ class Ball {
             hitWall = true;
         }
 
-        if (hitWall && now - this.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
+        // Mother ball is immortal - skip wall life deduction
+        if (hitWall && this.type !== 'mother' && now - this.lastWallHitTime > CONFIG.WALL_HIT_GRACE_PERIOD) {
             this.wallLives--;
             this.lastWallHitTime = now;
 
@@ -751,11 +755,13 @@ class Ball {
             }
         }
 
-        return this.wallLives > 0;
+        // Mother ball always survives
+        return this.type === 'mother' || this.wallLives > 0;
     }
 
     canDamage(block) {
         if (this.color === 'rainbow') return true;
+        if (this.color === 'white') return true;  // Mother ball can damage any block
         if (block.color === 'neutral') return true;
         // Blue special: piercing mode breaks ANY block
         if (this.bluePiercing) return true;
@@ -1085,59 +1091,35 @@ class Renderer {
         }
     }
 
-    drawArrow() {
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
-        // Super long arrow - extends to edge of canvas
-        const length = Math.max(this.canvas.width, this.canvas.height);
-        const angle = this.gameState.arrowAngle;
+    drawMotherBallIndicator(motherBall, angle) {
+        if (!motherBall) return;
 
-        const endX = cx + Math.cos(angle) * length;
-        const endY = cy + Math.sin(angle) * length;
+        const orbitRadius = 25;
+        const arcLength = 0.8;  // radians (~45 degrees)
 
-        // Glow (half opacity)
-        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.15)';
-        this.ctx.lineWidth = 12;
+        // Outer glow arc
+        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.3)';
+        this.ctx.lineWidth = 10;
         this.ctx.lineCap = 'round';
         this.ctx.beginPath();
-        this.ctx.moveTo(cx, cy);
-        this.ctx.lineTo(endX, endY);
+        this.ctx.arc(motherBall.x, motherBall.y, orbitRadius,
+                     angle - arcLength/2, angle + arcLength/2);
         this.ctx.stroke();
 
-        // Main line (half opacity)
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        this.ctx.lineWidth = 3;
+        // Main arc
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.lineWidth = 4;
         this.ctx.beginPath();
-        this.ctx.moveTo(cx, cy);
-        this.ctx.lineTo(endX, endY);
+        this.ctx.arc(motherBall.x, motherBall.y, orbitRadius,
+                     angle - arcLength/2, angle + arcLength/2);
         this.ctx.stroke();
 
-        // Arrow head at a reasonable distance from center
-        const headDist = 60;
-        const headX = cx + Math.cos(angle) * headDist;
-        const headY = cy + Math.sin(angle) * headDist;
-        const headLength = 14;
-        const headAngle = 0.5;
-
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        this.ctx.lineWidth = 3;
+        // Small dot at the leading edge of the arc (aim point)
+        const dotX = motherBall.x + Math.cos(angle) * orbitRadius;
+        const dotY = motherBall.y + Math.sin(angle) * orbitRadius;
+        this.ctx.fillStyle = 'rgba(0, 210, 211, 0.9)';
         this.ctx.beginPath();
-        this.ctx.moveTo(headX, headY);
-        this.ctx.lineTo(
-            headX - Math.cos(angle - headAngle) * headLength,
-            headY - Math.sin(angle - headAngle) * headLength
-        );
-        this.ctx.moveTo(headX, headY);
-        this.ctx.lineTo(
-            headX - Math.cos(angle + headAngle) * headLength,
-            headY - Math.sin(angle + headAngle) * headLength
-        );
-        this.ctx.stroke();
-
-        // Center dot
-        this.ctx.fillStyle = 'rgba(0, 210, 211, 0.4)';
-        this.ctx.beginPath();
-        this.ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+        this.ctx.arc(dotX, dotY, 4, 0, Math.PI * 2);
         this.ctx.fill();
     }
 
@@ -1373,15 +1355,17 @@ class Renderer {
             this.drawBlock(block);
         }
 
-        // Draw arrow
-        if (this.gameState.slotState === 'idle' && !this.gameState.isGameOver) {
-            this.drawArrow();
-        }
-
         // Draw particles (behind balls)
         this.particles.render(this.ctx);
 
-        // Draw balls
+        // Draw mother ball (always visible, bounces around)
+        if (this.gameState.motherBall && !this.gameState.isGameOver) {
+            this.drawBall(this.gameState.motherBall);
+            // Draw rotating indicator arc around mother ball
+            this.drawMotherBallIndicator(this.gameState.motherBall, this.gameState.arrowAngle);
+        }
+
+        // Draw spawned balls
         for (const ball of this.gameState.balls) {
             this.drawBall(ball);
         }
@@ -1600,6 +1584,13 @@ class Game {
         this.combo.reset();
         generateLevel(this.gameState, this.canvas.width, this.canvas.height);
         this.slotMachine.reset();
+
+        // Create the mother ball - white ball that bounces forever
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const randomAngle = Math.random() * Math.PI * 2;
+        this.gameState.motherBall = new Ball(cx, cy, 'white', 'mother', randomAngle);
+
         this.updateUI();
     }
 
@@ -1625,8 +1616,8 @@ class Game {
     }
 
     spawnBalls(color, count) {
-        const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2;
+        // Spawn from mother ball's current position
+        const motherBall = this.gameState.motherBall;
         const angle = this.gameState.arrowAngle;
         const isRainbow = color === 'rainbow';
 
@@ -1640,6 +1631,10 @@ class Game {
 
         for (let i = 0; i < count; i++) {
             setTimeout(() => {
+                // Get mother ball's current position (it keeps moving!)
+                const cx = motherBall ? motherBall.x : this.canvas.width / 2;
+                const cy = motherBall ? motherBall.y : this.canvas.height / 2;
+
                 // Slight angle variation for multiple balls
                 const angleOffset = count > 1 ? (i - (count - 1) / 2) * 0.15 : 0;
                 const ballAngle = angle + angleOffset;
@@ -1822,8 +1817,15 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
-        // Pause game while slot is active (spinning/stopping/result)
-        // Arrow is already locked when slot started, don't update anything
+        // Mother ball ALWAYS bounces (even during slot spinning)
+        if (this.gameState.motherBall) {
+            this.gameState.motherBall.update(this.canvas.width, this.canvas.height, null);
+        }
+
+        // Rotate indicator around mother ball (always, even during slot)
+        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
+
+        // Pause other game logic while slot is active
         if (this.gameState.slotState !== 'idle') {
             this.updateUI();
             return;
@@ -1840,9 +1842,6 @@ class Game {
         } else {
             this.slowmoActive = false;
         }
-
-        // Rotate arrow (not affected by slowmo for responsiveness)
-        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
 
         // Update balls
         const deadBalls = [];
