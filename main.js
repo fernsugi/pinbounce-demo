@@ -1427,9 +1427,9 @@ class Renderer {
         const basketHeight = 40;
         const basketWidth = this.canvas.width / 5;
         const y = this.canvas.height - basketHeight;
-        const multipliers = [0, 1, 3, 1, 0];  // void, x1, x3, x1, void
-        const colors = ['#1a1a2e', '#2d5a3d', '#5a2d5a', '#2d5a3d', '#1a1a2e'];
-        const labels = ['VOID', 'x1', 'x3', 'x1', 'VOID'];
+        const multipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
+        const colors = ['#2d2d5a', '#2d5a3d', '#5a2d5a', '#2d5a3d', '#2d2d5a'];
+        const labels = ['SKILL', 'x1', 'x3', 'x1', 'SKILL'];
 
         for (let i = 0; i < 5; i++) {
             const x = i * basketWidth;
@@ -1443,7 +1443,7 @@ class Renderer {
 
             // Basket border
             this.ctx.strokeStyle = multipliers[i] === 3 ? '#9b59b6' :
-                                   multipliers[i] === 1 ? '#27ae60' : '#333';
+                                   multipliers[i] === 1 ? '#27ae60' : '#5555aa';
             this.ctx.lineWidth = 2;
             this.ctx.strokeRect(x, y, basketWidth, basketHeight);
 
@@ -1452,7 +1452,7 @@ class Renderer {
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillStyle = multipliers[i] === 3 ? '#e056fd' :
-                                 multipliers[i] === 1 ? '#2ecc71' : '#555';
+                                 multipliers[i] === 1 ? '#2ecc71' : '#8888ff';
             this.ctx.fillText(labels[i], x + basketWidth / 2, y + basketHeight / 2);
         }
     }
@@ -2149,7 +2149,7 @@ class Game {
         const basketHeight = 40;
         const basketWidth = this.canvas.width / 5;
         const basketY = this.canvas.height - basketHeight;
-        const multipliers = [0, 1, 3, 1, 0];  // void, x1, x3, x1, void
+        const multipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
         let triggerSkillWheel = false;
 
         // Check each ball
@@ -2177,14 +2177,14 @@ class Game {
                     this.audio.blockBreak();
                 }
 
-                // Trigger skill wheel on x3 basket
-                if (multiplier === 3 && this.gameState.balls.length > 1) {
+                // Trigger skill wheel on SKILL basket (multiplier === 0)
+                if (multiplier === 0 && this.gameState.balls.length > 1) {
                     triggerSkillWheel = true;
                 }
 
                 // Particles for basket entry
                 const color = multiplier === 3 ? '#e056fd' :
-                              multiplier === 1 ? '#2ecc71' : '#555';
+                              multiplier === 1 ? '#2ecc71' : '#8888ff';
                 this.particles.emit(ball.x, basketY, color, 10);
 
                 return false;  // Remove ball
