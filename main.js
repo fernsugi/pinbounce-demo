@@ -10,30 +10,6 @@
    - CameraShake (Cinemachine or custom)
    =========================================== */
 
-/* ===========================================
-   FUTURE MONETIZATION MEMO (NOT IMPLEMENTED)
-   ===========================================
-
-   CORE LOOP:
-   - New players start with 5,000 points as currency
-   - Players spin the slot as many times as desired before pressing "Stop"
-   - All corresponding balls spawn at once when stopped
-   - Each slot spin costs 100 points
-   - Game ends when player runs out of points or forfeits
-   - Winning awards all accumulated points from the session
-
-   MONETIZATION:
-   - Watch ads to earn 2,500 points (prompt appears only when out of points)
-   - Daily login reward: 2,500 points
-   - Shop: Purchase "5x Free Spins" packs (free spins, not points - for legal reasons)
-   - Cosmetics: Common items purchasable with points, rare items require real payment
-
-   DESIGN INTENT:
-   - Create engaging gambling-like mechanics to maximize player retention
-   - Free spins as purchasable item avoids direct point-to-money conversion
-
-   =========================================== */
-
 // ===========================================
 // ECONOMY CONSTANTS - Monetization system
 // ===========================================
