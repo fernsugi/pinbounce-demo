@@ -1815,16 +1815,16 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
-        // Rotate indicator around mother ball (always, even during slot)
-        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
-
-        // Pause game while slot is active (mother ball stops too)
+        // Pause everything while slot is active (mother ball + indicator stop)
         if (this.gameState.slotState !== 'idle') {
             this.updateUI();
             return;
         }
 
-        // Update mother ball (only when not spinning slot)
+        // Rotate indicator around mother ball
+        this.gameState.arrowAngle += CONFIG.ARROW_SPIN_SPEED;
+
+        // Update mother ball
         if (this.gameState.motherBall) {
             this.gameState.motherBall.update(this.canvas.width, this.canvas.height, null);
         }
