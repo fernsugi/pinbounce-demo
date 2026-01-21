@@ -576,10 +576,10 @@ const CONFIG = {
 
     // Slot machine timing (ms)
     SLOT_SPIN_TIME: 700,
-    SLOT_REEL1_INTERVAL: 350,       // First reel: slow & predictable (higher = slower)
-    SLOT_REEL23_INTERVAL: 100,      // Other reels: fast & random
-    SLOT_AUTO_STOP_DELAY: 200,
-    SLOT_RESULT_DISPLAY: 400,
+    SLOT_REEL1_INTERVAL: 200,       // First reel: slow & predictable (higher = slower)
+    SLOT_REEL23_INTERVAL: 80,       // Other reels: fast & random
+    SLOT_AUTO_STOP_DELAY: 100,      // Quick stops between reels
+    SLOT_RESULT_DISPLAY: 150,       // Brief result display
 
     // Slot probability bias (0-1, higher = more matches)
     SLOT_MATCH_BIAS: 0.45,
@@ -1485,7 +1485,7 @@ class SlotMachine {
 
         // Auto-stop after brief spin animation (no second space needed)
         this.autoStopTimeouts.push(
-            setTimeout(() => this.stopReel(), 400)  // First reel after 400ms
+            setTimeout(() => this.stopReel(), 250)  // First reel after 250ms
         );
     }
 
@@ -1570,12 +1570,12 @@ class SlotMachine {
 
         document.getElementById('slot-result').textContent = resultText;
 
-        // Hide overlay after brief delay
+        // Hide overlay quickly
         setTimeout(() => {
             document.getElementById('slot-overlay').classList.add('hidden');
             this.gameState.slotState = 'idle';
             if (this.onResult) this.onResult(ballColor, ballCount);
-        }, 300);
+        }, 200);
     }
 
     skipToResult() {
