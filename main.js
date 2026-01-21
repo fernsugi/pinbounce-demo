@@ -3827,7 +3827,8 @@ class Game {
         this.overlayTitle.className = won ? 'win' : 'lose';
         this.overlayTitle.textContent = won ? 'LEVEL CLEAR!' : 'SESSION END';
 
-        const earnedPoints = this.sessionPoints;
+        // Use gameState.points directly (sessionPoints may be stale)
+        const earnedPoints = this.gameState.points;
 
         if (earnedPoints > 0) {
             // Add session points to player's balance
