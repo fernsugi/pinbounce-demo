@@ -1450,7 +1450,7 @@ class SlotMachine {
         // Show overlay
         document.getElementById('slot-overlay').classList.remove('hidden');
         document.getElementById('slot-result').textContent = '';
-        document.getElementById('slot-hint').textContent = 'Press SPACE to stop';
+        document.getElementById('slot-hint').textContent = '';  // No hint needed - auto completes
 
         // Randomize starting color each spin
         this.reel1Index = Math.floor(Math.random() * 3);
@@ -1476,6 +1476,11 @@ class SlotMachine {
         // Initialize first reel with random starting color
         this.gameState.slotReels[0] = this.colors[this.reel1Index];
         this.updateReelDisplay();
+
+        // Auto-stop after brief spin animation (no second space needed)
+        this.autoStopTimeouts.push(
+            setTimeout(() => this.stopReel(), 400)  // First reel after 400ms
+        );
     }
 
     stopReel() {
@@ -2069,6 +2074,9 @@ class Renderer {
         // Check if skill wheel is on cooldown
         const skillOnCooldown = Date.now() < this.gameState.skillWheelCooldown;
 
+        // Check if Fever Time is active
+        const isFeverTime = this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0;
+
         for (let i = 0; i < 5; i++) {
             const x = i * basketWidth;
             const basketType = this.gameState.basketOrder[i];
@@ -2076,11 +2084,29 @@ class Renderer {
             let color = baseColors[basketType];
             let label = baseLabels[basketType];
 
-            // Dim SKILL baskets when on cooldown
             const isSkillBasket = multiplier === 0;
-            if (isSkillBasket && skillOnCooldown) {
-                color = '#1a1a1a';  // Very dark
-                label = '---';  // Show cooldown indicator
+
+            // Fever Time transformations
+            if (isFeverTime) {
+                if (isSkillBasket) {
+                    // SKILL becomes PORTAL
+                    color = '#005a5a';  // Cyan-ish
+                    label = 'PORTAL';
+                } else if (multiplier === 1) {
+                    // x1 becomes x3
+                    color = '#5a2d5a';  // Purple like x3
+                    label = 'x3';
+                } else if (multiplier === 3) {
+                    // x3 becomes x5
+                    color = '#5a5a2d';  // Gold-ish
+                    label = 'x5';
+                }
+            } else {
+                // Normal mode: Dim SKILL baskets when on cooldown
+                if (isSkillBasket && skillOnCooldown) {
+                    color = '#1a1a1a';  // Very dark
+                    label = '---';  // Show cooldown indicator
+                }
             }
 
             // Basket background
@@ -2091,9 +2117,19 @@ class Renderer {
             this.ctx.fillRect(x, y, basketWidth, basketHeight);
 
             // Basket border
-            let borderColor = multiplier === 3 ? '#9b59b6' :
-                              multiplier === 1 ? '#27ae60' : '#5555aa';
-            if (isSkillBasket && skillOnCooldown) {
+            let borderColor;
+            if (isFeverTime && isSkillBasket) {
+                borderColor = '#00d2d3';  // Cyan for portal
+            } else if (isFeverTime && multiplier === 3) {
+                borderColor = '#ffd700';  // Gold for x5
+            } else if (multiplier === 3 || (isFeverTime && multiplier === 1)) {
+                borderColor = '#9b59b6';  // Purple for x3
+            } else if (multiplier === 1) {
+                borderColor = '#27ae60';
+            } else {
+                borderColor = '#5555aa';
+            }
+            if (!isFeverTime && isSkillBasket && skillOnCooldown) {
                 borderColor = '#222222';  // Very dark border
             }
             this.ctx.strokeStyle = borderColor;
@@ -2104,9 +2140,19 @@ class Renderer {
             this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            let labelColor = multiplier === 3 ? '#e056fd' :
-                             multiplier === 1 ? '#2ecc71' : '#8888ff';
-            if (isSkillBasket && skillOnCooldown) {
+            let labelColor;
+            if (isFeverTime && isSkillBasket) {
+                labelColor = '#00ffff';  // Cyan for portal
+            } else if (isFeverTime && multiplier === 3) {
+                labelColor = '#ffd700';  // Gold for x5
+            } else if (multiplier === 3 || (isFeverTime && multiplier === 1)) {
+                labelColor = '#e056fd';  // Purple for x3
+            } else if (multiplier === 1) {
+                labelColor = '#2ecc71';
+            } else {
+                labelColor = '#8888ff';
+            }
+            if (!isFeverTime && isSkillBasket && skillOnCooldown) {
                 labelColor = '#333333';  // Very dim label
             }
             this.ctx.fillStyle = labelColor;
@@ -2636,7 +2682,7 @@ class Renderer {
         this.ctx.shadowColor = '#ff6600';
         this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
         this.ctx.fillStyle = '#ffff00';
-        this.ctx.fillText('+1 per bounce!', 0, 22);
+        this.ctx.fillText('Bounces power up balls!', 0, 22);
 
         this.ctx.restore();
     }
@@ -3215,6 +3261,9 @@ class Game {
         const baseMultipliers = [0, 1, 3, 1, 0];  // skill, x1, x3, x1, skill
         let triggerSkillWheel = false;
 
+        // Check if Fever Time is active (no blocks left AND balls still in play)
+        const isFeverTime = this.gameState.remainingBlocks === 0;
+
         // Check each ball
         this.gameState.balls = this.gameState.balls.filter(ball => {
             // Check if ball entered basket zone
@@ -3223,7 +3272,37 @@ class Game {
                 const basketIndex = Math.floor(ball.x / basketWidth);
                 const clampedIndex = Math.max(0, Math.min(4, basketIndex));
                 const basketType = this.gameState.basketOrder[clampedIndex];
-                const multiplier = baseMultipliers[basketType];
+                let multiplier = baseMultipliers[basketType];
+
+                // Fever Time: SKILL baskets become PORTAL
+                if (isFeverTime && multiplier === 0) {
+                    // Teleport ball back to base position
+                    ball.x = this.gameState.baseX;
+                    ball.y = CONFIG.BASE_Y + CONFIG.BASE_RADIUS + ball.radius + 20;
+                    // Give it a new downward velocity with random spread
+                    const speed = CONFIG.BALL_SPEED * CONFIG.BALL_BOOST_MULTIPLIER;
+                    ball.vx = (Math.random() - 0.5) * speed * 0.6;
+                    ball.vy = speed;
+                    ball.boosted = true;  // Re-boost the ball
+                    // Portal effect
+                    this.particles.emit(ball.x, ball.y, '#00ffff', 12);
+                    // Show "PORTAL!" text
+                    this.gameState.damageTexts.push({
+                        x: ball.x,
+                        y: ball.y + 30,
+                        damage: 'PORTAL!',
+                        life: 500,
+                        maxLife: 500,
+                        isPoints: true
+                    });
+                    return true;  // Keep ball (teleported)
+                }
+
+                // Fever Time: Multipliers increase (x1→x3, x3→x5)
+                if (isFeverTime) {
+                    if (multiplier === 1) multiplier = 3;
+                    else if (multiplier === 3) multiplier = 5;
+                }
 
                 // Add points (ball.points * multiplier)
                 const earnedPoints = ball.points * multiplier;
@@ -3241,13 +3320,14 @@ class Game {
                     this.audio.blockBreak();
                 }
 
-                // Trigger skill wheel on SKILL basket (multiplier === 0)
-                if (multiplier === 0) {
+                // Trigger skill wheel on SKILL basket (multiplier === 0) - only when NOT Fever Time
+                if (multiplier === 0 && !isFeverTime) {
                     triggerSkillWheel = true;
                 }
 
                 // Particles for basket entry
-                const color = multiplier === 3 ? '#e056fd' :
+                const color = multiplier >= 5 ? '#ffd700' :  // Gold for x5
+                              multiplier === 3 ? '#e056fd' :
                               multiplier === 1 ? '#2ecc71' : '#8888ff';
                 this.particles.emit(ball.x, basketY, color, 10);
 
@@ -3561,6 +3641,10 @@ class Game {
 
         if (this.gameState.isGameOver) return;
 
+        // Check for win even during slot/skill wheel (in case all balls finished during animation)
+        this.checkGameEnd();
+        if (this.gameState.isGameOver) return;
+
         // Pause while slot is active
         if (this.gameState.slotState !== 'idle') {
             this.updateUI();
@@ -3622,11 +3706,11 @@ class Game {
         this.processBallWallCollisions();
         this.processBallBlockCollisions();
 
-        // Bonus points for bounces when no blocks left (after wall collisions are processed)
+        // Fever Time: bounces add to ball's points (multiplied by basket later)
         if (this.gameState.remainingBlocks === 0) {
             for (const ball of this.gameState.balls) {
                 if (ball.hitWallThisFrame) {
-                    this.gameState.points += 1;
+                    ball.points += 1;
                 }
             }
         }
