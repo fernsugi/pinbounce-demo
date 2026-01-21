@@ -1765,7 +1765,7 @@ class SkillWheel {
         this.overlay.classList.remove('hidden');
         this.resultEl.textContent = '';
         this.resultEl.className = '';
-        this.hintEl.textContent = 'Press SPACE to stop';
+        this.hintEl.textContent = '';  // No hint - auto completes
         this.stopping = false;
         this.gameState.skillWheelState = 'spinning';
 
@@ -1777,6 +1777,9 @@ class SkillWheel {
         this.spinning = true;
         this.spinSpeed = 0.3;
         this.animateSpin();
+
+        // Auto-stop after brief spin (quick so it's not frustrating)
+        setTimeout(() => this.stopSpin(), 350);
     }
 
     hide() {
@@ -1842,11 +1845,11 @@ class SkillWheel {
             this.audio.loseSound();
         }
 
-        // Close overlay and trigger callback after delay
+        // Close overlay and trigger callback after brief delay
         setTimeout(() => {
             this.hide();
             if (this.onResult) this.onResult(result.skill);
-        }, 1000);
+        }, 500);
     }
 
     skipToResult() {
