@@ -15,10 +15,10 @@
 // ===========================================
 
 const ECONOMY = {
-    STARTING_POINTS: 5000,          // New player starting balance
-    SPIN_COST: 100,                 // Cost per slot spin
-    DAILY_REWARD: 2500,             // Daily login reward
-    AD_REWARD: 2500,                // Points for watching an ad
+    STARTING_POINTS: 6000,          // New player starting balance
+    SPIN_COST: 300,                 // Cost per slot spin
+    DAILY_REWARD: 3000,             // Daily login reward
+    AD_REWARD: 3000,                // Points for watching an ad
     FREE_SPIN_PACK_COUNT: 5,        // Spins in a pack
     FREE_SPIN_PACK_PRICE: 0.99,     // USD (dummy)
 

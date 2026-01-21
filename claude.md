@@ -6,8 +6,8 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 ## Economy System
 
 ### Points as Currency
-- New players start with 5,000 points
-- Each slot spin costs 100 points
+- New players start with 6,000 points
+- Each slot spin costs 300 points
 - Points are persistent (saved to localStorage)
 - Session points earned from gameplay are added to balance when game ends
 
@@ -17,13 +17,13 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Shown with purple "FREE" badge in-game
 
 ### Daily Reward
-- 2,500 points once per day
+- 3,000 points once per day
 - Banner appears on main menu when available
 
 ### Ad System (Dummy)
 - Prompted when player runs out of points
 - 5-second countdown before skip available
-- Rewards 2,500 points
+- Rewards 3,000 points
 
 ### Shop
 - Ball skins: Fire, Ice (500 points), Gold, Neon ($1.99)
@@ -134,10 +134,10 @@ Mobile-first responsive styling with arcade aesthetic.
 
 ### Economy Constants (ECONOMY)
 ```javascript
-STARTING_POINTS: 5000,      // New player balance
-SPIN_COST: 100,             // Cost per slot spin
-DAILY_REWARD: 2500,         // Daily login bonus
-AD_REWARD: 2500,            // Points for watching ad
+STARTING_POINTS: 6000,      // New player balance
+SPIN_COST: 300,             // Cost per slot spin
+DAILY_REWARD: 3000,         // Daily login bonus
+AD_REWARD: 3000,            // Points for watching ad
 FREE_SPIN_PACK_COUNT: 5,    // Spins per pack
 ```
 
