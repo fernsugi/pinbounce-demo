@@ -2111,10 +2111,10 @@ class Renderer {
                     label = 'x5';
                 }
             } else {
-                // Normal mode: Dim SKILL baskets when on cooldown
+                // Normal mode: SKILL baskets become PORTAL during cooldown
                 if (isSkillBasket && skillOnCooldown) {
-                    color = '#1a1a1a';  // Very dark
-                    label = '---';  // Show cooldown indicator
+                    color = '#005a5a';  // Cyan-ish (same as Fever Time portal)
+                    label = 'PORTAL';
                 }
             }
 
@@ -2139,7 +2139,7 @@ class Renderer {
                 borderColor = '#5555aa';
             }
             if (!isFeverTime && isSkillBasket && skillOnCooldown) {
-                borderColor = '#222222';  // Very dark border
+                borderColor = '#00d2d3';  // Cyan for portal (same as Fever Time)
             }
             this.ctx.strokeStyle = borderColor;
             this.ctx.lineWidth = 2;
@@ -2162,7 +2162,7 @@ class Renderer {
                 labelColor = '#8888ff';
             }
             if (!isFeverTime && isSkillBasket && skillOnCooldown) {
-                labelColor = '#333333';  // Very dim label
+                labelColor = '#00ffff';  // Cyan for portal (same as Fever Time)
             }
             this.ctx.fillStyle = labelColor;
             this.ctx.fillText(label, x + basketWidth / 2, y + basketHeight / 2);
@@ -3283,8 +3283,9 @@ class Game {
                 const basketType = this.gameState.basketOrder[clampedIndex];
                 let multiplier = baseMultipliers[basketType];
 
-                // Fever Time: SKILL baskets become PORTAL
-                if (isFeverTime && multiplier === 0) {
+                // SKILL baskets become PORTAL during Fever Time OR during cooldown
+                const skillOnCooldown = Date.now() <= this.gameState.skillWheelCooldown;
+                if (multiplier === 0 && (isFeverTime || skillOnCooldown)) {
                     // Teleport ball back to base position
                     ball.x = this.gameState.baseX;
                     ball.y = CONFIG.BASE_Y + CONFIG.BASE_RADIUS + ball.radius + 20;

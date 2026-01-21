@@ -76,7 +76,7 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 ### Baskets (Bottom)
 - 5 baskets with shuffled positions each game: SKILL, x1, x3, x1, SKILL
 - x1/x3 multiply the ball's accumulated points
-- SKILL basket triggers the skill wheel (shows "---" when on cooldown)
+- SKILL basket triggers the skill wheel (becomes PORTAL when on cooldown)
 
 ### Skill Wheel
 - Triggered when ball enters SKILL basket (if blocks remain)
