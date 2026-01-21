@@ -1329,6 +1329,12 @@ class Ball {
         // Track wall hit for bonus points
         this.hitWallThisFrame = hitOuterWall;
 
+        // Add tiny random nudge on wall hit to prevent infinite loops
+        if (hitOuterWall) {
+            this.vx += (Math.random() - 0.5) * 0.1;
+            this.vy += (Math.random() - 0.5) * 0.1;
+        }
+
         // Lose boost on outer wall hit (with spawn grace period)
         if (hitOuterWall && this.boosted && timeSinceSpawn > 200) {
             this.boosted = false;
