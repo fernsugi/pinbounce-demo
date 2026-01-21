@@ -29,7 +29,7 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Ball skins: Fire, Ice (500 points), Gold, Neon ($1.99)
 - Trails: Spark (300 points), Rainbow ($0.99)
 - Cosmetics can be purchased with points or real money (dummy)
-- Equipped cosmetics persist across sessions
+- Equipped cosmetics persist across sessions and render in-game
 
 ## Game Flow
 
@@ -40,14 +40,13 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 4. SETTINGS → sound, haptics, performance mode, reset progress
 
 ### In-Game
-1. Press SPACE to spin slot (costs 100 points or 1 free spin)
-2. Balls queue up until player has balls on screen
-3. LAUNCH ALL button appears when balls are queued
-4. Session points accumulate from gameplay
-5. Game ends when:
+1. Press SPACE to spin slot (auto-completes quickly, ~450ms)
+2. Balls queue up - press DOWN ARROW to launch
+3. Session points accumulate from gameplay
+4. Game ends when:
    - All blocks cleared (win) - session points added to balance
    - Can't afford spin + no balls in play (lose) - session points added
-   - Player forfeits - session points saved
+   - Player forfeits - NO points saved (penalty)
 
 ### Session End
 - Points earned are added to player balance
@@ -60,13 +59,14 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 ### Base & Shooting
 - Base moves left/right automatically at the top of the screen
 - Press SPACE to spin the slot machine and queue balls
-- Balls always shoot straight down from the base position
+- Press DOWN ARROW to launch all queued balls
+- Balls shoot from current base position with slight spread
 
 ### Slot Machine
 - Determines ball color (red/yellow/blue) and quantity (1-3)
 - Triple match = 3 balls, double match = 2 balls, no match = 1 ball
 - All different colors = Rainbow ball (special, destroys any block instantly)
-- Press SPACE to skip animation instantly
+- Auto-completes quickly (~450ms) - no interaction needed
 
 ### Blocks
 - Colored blocks (red/yellow/blue) - matching ball color deals 5 damage, mismatched deals 1 damage
@@ -85,23 +85,29 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - BULLDOZE: All balls double in size and pierce through blocks
 - SPLIT: Next shot spawns 3x the normal ball count
 - Random starting position each spin (prevents consecutive misses)
-- If no balls on screen, skill is saved for next shot ("NEXT: SKILL" indicator below base)
+- Auto-completes quickly (~450ms) - no interaction needed
 - 2-second cooldown between triggers
-- Press SPACE to skip animation instantly
 
 ### Fever Time
 - Activates when all blocks are cleared and balls are still bouncing
 - Flashy "FEVER TIME!" banner appears in center
-- +1 bonus point per wall bounce (outer walls AND obstacle walls)
+- Wall bounces add +1 to ball's accumulated points (multiplied by basket)
+- SKILL baskets become PORTAL - teleport balls back to base
+- Basket multipliers increase: x1→x3, x3→x5
+- Cannot spin new balls during Fever Time (prevents cheating)
+
+### Ball Physics
+- Tiny random velocity nudge on wall bounce prevents infinite loops
+- Balls that would bounce forever eventually break pattern
 
 ## Key Files
 
 ### main.js
 Main game logic containing:
-- `ECONOMY` - Economy constants (line ~41)
+- `ECONOMY` - Economy constants (line ~17)
 - `PlayerData` - Persistent player data with localStorage (line ~62)
 - `MenuManager` - Main menu, shop, ads handling (line ~228)
-- `CONFIG` - Game configuration constants (line ~554)
+- `CONFIG` - Game configuration constants (line ~530)
 - `JUICE` - Visual effects settings (line ~620)
 - `GameState` - Core game state (line ~1160)
 - `Ball` - Ball physics and behavior (line ~1250)
@@ -109,13 +115,13 @@ Main game logic containing:
 - `SlotMachine` - Slot mechanics (line ~1430)
 - `SkillWheel` - Skill wheel mechanics (line ~1680)
 - `Renderer` - Canvas rendering (line ~1960)
-- `Game` - Main game loop and logic (line ~2682)
+- `Game` - Main game loop and logic (line ~2800)
 
 ### index.html
 Game structure with:
 - Main menu overlay
 - In-game header (balance + session points)
-- Queue display for batched balls
+- Queue display for batched balls (with DOWN arrow hint)
 - Shop panel with cosmetics
 - Ad prompt and dummy ad player
 - Purchase confirmation modal
@@ -148,10 +154,10 @@ Set weight to 0 to disable that color.
 - `SLOT_MATCH_BIAS` - Chance for reels to match
 
 ## Controls
-- SPACE - Spin slot / Stop skill wheel / Skip animations
+- SPACE - Spin slot (auto-completes)
+- DOWN ARROW - Launch queued balls
 - D - Toggle debug panel
-- FORFEIT button - End game early, keep earned points
-- LAUNCH ALL - Launch all queued balls
+- FORFEIT button - End game early (0 points penalty)
 - Settings - Toggle sound, haptics, performance mode
 
 ## Data Persistence (localStorage)
