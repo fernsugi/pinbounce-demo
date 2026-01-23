@@ -105,6 +105,7 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
   - Warning flash 0.8 sec before becoming solid
 - Each fairy has 2 HP - requires 2 hits while solid to catch
 - Fairies are staggered so they don't all become solid at once
+- **Beacon rings** pulse around fairies for visibility (gold when solid, purple when ghost)
 - Status shows "X CATCHABLE!" when fairies are in solid phase
 - Collecting all 5 fairies triggers the Jackpot
 
@@ -112,13 +113,16 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Triggered after collecting all 5 fairies
 - Game freezes during jackpot spin (balls pause)
 - 5 slots reveal one by one, each showing O or X
+  - O slots have green border/glow
+  - X slots have red border/glow
 - Each O = 1 second of auto-fire reward
+- **Auto-fire visuals**: Base turns gold with pulsing energy ring and orbiting particles
 - During auto-fire: base shoots random balls (red/yellow/blue/rainbow)
 - Rainbow balls have 10% spawn chance during auto-fire
 - **Unlock mechanic**: Need 3+ O's to spawn fairies again in current Fever Time
   - 3+ O's: Fairies respawn immediately, can trigger jackpot again
   - 0-2 O's: "FAIRY HUNT LOCKED" - no more fairies this Fever Time
-  - Progress bar shows O count during spin (X/3 for unlock)
+  - Progress bar fills one segment per O revealed (3 segments total)
   - Resets to unlocked at start of each new game
 
 ### Tomb Wall (Fever Time)

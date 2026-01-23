@@ -2211,10 +2211,44 @@ class Renderer {
         const baseY = CONFIG.BASE_Y;
         const baseWidth = CONFIG.BASE_RADIUS * 1.5;
         const baseHeight = CONFIG.BASE_RADIUS * 1.2;
+        const time = Date.now();
 
-        // Draw triangle pointing down with glow
-        this.ctx.shadowColor = 'rgba(0, 210, 211, 0.6)';
-        this.ctx.shadowBlur = 15;
+        // Check if in auto-fire mode (jackpot reward)
+        const isAutoFire = this.gameState.jackpotState === 'reward';
+
+        if (isAutoFire) {
+            // Auto-fire mode: Gold base with epic effects
+
+            // Outer energy ring
+            const ringPulse = 1 + Math.sin(time * 0.01) * 0.2;
+            this.ctx.strokeStyle = `rgba(255, 215, 0, ${0.3 + Math.sin(time * 0.008) * 0.2})`;
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.arc(baseX, baseY + baseHeight * 0.4, baseWidth * 1.5 * ringPulse, 0, Math.PI * 2);
+            this.ctx.stroke();
+
+            // Particle burst effect
+            for (let i = 0; i < 8; i++) {
+                const angle = (time * 0.003 + i * Math.PI / 4) % (Math.PI * 2);
+                const dist = 25 + Math.sin(time * 0.01 + i) * 10;
+                const px = baseX + Math.cos(angle) * dist;
+                const py = baseY + baseHeight * 0.4 + Math.sin(angle) * dist * 0.6;
+                const alpha = 0.5 + Math.sin(time * 0.015 + i * 0.5) * 0.3;
+
+                this.ctx.fillStyle = `rgba(255, 200, 50, ${alpha})`;
+                this.ctx.beginPath();
+                this.ctx.arc(px, py, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            // Gold glow
+            this.ctx.shadowColor = 'rgba(255, 200, 0, 0.9)';
+            this.ctx.shadowBlur = 25 + Math.sin(time * 0.01) * 10;
+        } else {
+            // Normal mode: Cyan base
+            this.ctx.shadowColor = 'rgba(0, 210, 211, 0.6)';
+            this.ctx.shadowBlur = 15;
+        }
 
         // Triangle path: top-left, top-right, bottom-center
         this.ctx.beginPath();
@@ -2225,15 +2259,23 @@ class Renderer {
 
         // Fill with gradient
         const gradient = this.ctx.createLinearGradient(baseX, baseY, baseX, baseY + baseHeight);
-        gradient.addColorStop(0, 'rgba(0, 210, 211, 0.6)');
-        gradient.addColorStop(0.7, 'rgba(0, 150, 151, 0.4)');
-        gradient.addColorStop(1, 'rgba(0, 100, 101, 0.2)');
+        if (isAutoFire) {
+            // Gold gradient for auto-fire
+            gradient.addColorStop(0, 'rgba(255, 215, 0, 0.9)');
+            gradient.addColorStop(0.5, 'rgba(255, 180, 0, 0.7)');
+            gradient.addColorStop(1, 'rgba(255, 140, 0, 0.4)');
+        } else {
+            // Cyan gradient for normal
+            gradient.addColorStop(0, 'rgba(0, 210, 211, 0.6)');
+            gradient.addColorStop(0.7, 'rgba(0, 150, 151, 0.4)');
+            gradient.addColorStop(1, 'rgba(0, 100, 101, 0.2)');
+        }
         this.ctx.fillStyle = gradient;
         this.ctx.fill();
 
         // Stroke outline
-        this.ctx.strokeStyle = 'rgba(0, 210, 211, 0.8)';
-        this.ctx.lineWidth = 2;
+        this.ctx.strokeStyle = isAutoFire ? 'rgba(255, 215, 0, 1)' : 'rgba(0, 210, 211, 0.8)';
+        this.ctx.lineWidth = isAutoFire ? 3 : 2;
         this.ctx.stroke();
 
         this.ctx.shadowBlur = 0;
@@ -3139,10 +3181,25 @@ class Renderer {
             this.roundRect(slotX - slotSize/2, slotY - slotSize/2, slotSize, slotSize, 8);
             this.ctx.fill();
 
+            // Determine border color based on revealed result
+            let borderColor = '#444';
+            let borderGlow = 0;
+            if (i < gs.jackpotRevealIndex) {
+                const result = gs.jackpotResults[i];
+                if (result === 'O') {
+                    borderColor = '#00ff88';
+                    borderGlow = 8;
+                } else {
+                    borderColor = '#ff4444';
+                    borderGlow = 8;
+                }
+            }
+
             // Slot border
-            this.ctx.strokeStyle = i < gs.jackpotRevealIndex ? '#ffd700' : '#444';
+            this.ctx.strokeStyle = borderColor;
             this.ctx.lineWidth = 2;
-            this.ctx.shadowBlur = i < gs.jackpotRevealIndex ? 8 : 0;
+            this.ctx.shadowColor = borderColor;
+            this.ctx.shadowBlur = borderGlow;
             this.ctx.beginPath();
             this.roundRect(slotX - slotSize/2, slotY - slotSize/2, slotSize, slotSize, 8);
             this.ctx.stroke();
@@ -3205,21 +3262,21 @@ class Renderer {
         this.roundRect(-barWidth/2, barY, barWidth, barHeight, 5);
         this.ctx.fill();
 
-        // Progress fill (3 segments for 3 O's needed)
+        // Progress fill (3 segments for 3 O's needed) - draw each segment individually
         const segmentWidth = barWidth / 3;
-        for (let i = 0; i < Math.min(oCount, 3); i++) {
-            const segX = -barWidth/2 + i * segmentWidth;
-            this.ctx.fillStyle = i < 2 ? '#00aa55' : '#00ff88';
+        const filledO = Math.min(oCount, 3);
+        for (let i = 0; i < filledO; i++) {
+            const segX = -barWidth/2 + i * segmentWidth + 2;
+            const segW = segmentWidth - 4;
+
+            // Brighter green as we get more O's
+            this.ctx.fillStyle = i === 2 ? '#00ff88' : (i === 1 ? '#00dd66' : '#00aa55');
+            this.ctx.shadowColor = '#00ff88';
+            this.ctx.shadowBlur = i === filledO - 1 ? 8 : 0; // Glow on latest segment
             this.ctx.beginPath();
-            if (i === 0) {
-                this.roundRect(segX, barY, segmentWidth - 2, barHeight, {tl: 5, bl: 5, tr: 0, br: 0});
-            } else if (i === 2) {
-                this.roundRect(segX + 2, barY, segmentWidth - 2, barHeight, {tl: 0, bl: 0, tr: 5, br: 5});
-            } else {
-                this.ctx.fillRect(segX + 1, barY, segmentWidth - 2, barHeight);
-            }
-            this.ctx.fill();
+            this.ctx.fillRect(segX, barY + 2, segW, barHeight - 4);
         }
+        this.ctx.shadowBlur = 0;
 
         // Segment dividers
         this.ctx.strokeStyle = '#333';
