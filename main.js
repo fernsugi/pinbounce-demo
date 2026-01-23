@@ -1183,6 +1183,7 @@ class GameState {
         // Pending skill (for next shot if skill wheel won with no balls)
         this.pendingSkill = null;
 
+
         // Debug stats
         this.debugStats = {
             totalSpins: 0,
@@ -2635,7 +2636,7 @@ class Renderer {
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
 
-        // Draw FEVER TIME when no blocks left and balls still bouncing
+        // Draw FEVER TIME banner when no blocks left and balls still bouncing
         if (this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0 && !this.gameState.isGameOver) {
             this.drawFeverTime();
         }
@@ -3717,7 +3718,8 @@ class Game {
         this.processBallBlockCollisions();
 
         // Fever Time: bounces add to ball's points (multiplied by basket later)
-        if (this.gameState.remainingBlocks === 0) {
+        const isFeverTime = this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0;
+        if (isFeverTime) {
             for (const ball of this.gameState.balls) {
                 if (ball.hitWallThisFrame) {
                     ball.points += 1;
