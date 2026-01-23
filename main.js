@@ -2943,6 +2943,42 @@ class Game {
             this.onSpinButton();
         });
 
+        // Mobile touch controls on canvas
+        let touchStartY = 0;
+        let touchStartTime = 0;
+        const SWIPE_THRESHOLD = 50;  // Minimum swipe distance
+        const TAP_THRESHOLD = 200;   // Max time for tap (ms)
+
+        this.canvas.addEventListener('touchstart', (e) => {
+            if (!this.isInGame) return;
+            e.preventDefault();
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchend', (e) => {
+            if (!this.isInGame) return;
+            e.preventDefault();
+            const touchEndY = e.changedTouches[0].clientY;
+            const touchDuration = Date.now() - touchStartTime;
+            const swipeDistance = touchEndY - touchStartY;
+
+            if (swipeDistance > SWIPE_THRESHOLD) {
+                // Swipe down = launch balls
+                this.onLaunchButton();
+            } else if (touchDuration < TAP_THRESHOLD && Math.abs(swipeDistance) < 20) {
+                // Quick tap = spin slot
+                this.onSpinButton();
+            }
+        }, { passive: false });
+
+        // Also allow click on canvas for desktop
+        this.canvas.addEventListener('click', () => {
+            if (this.isInGame) {
+                this.onSpinButton();
+            }
+        });
+
         // Forfeit button - end game and return to menu
         document.getElementById('forfeit-btn').addEventListener('click', () => {
             if (this.isInGame) {

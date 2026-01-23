@@ -154,10 +154,18 @@ Set weight to 0 to disable that color.
 - `SLOT_MATCH_BIAS` - Chance for reels to match
 
 ## Controls
-- SPACE - Spin slot (auto-completes)
+
+### Mobile (Touch)
+- TAP screen - Spin slot
+- SWIPE DOWN - Launch queued balls
+
+### Desktop (Keyboard)
+- SPACE - Spin slot
 - DOWN ARROW - Launch queued balls
 - D - Toggle debug panel
-- FORFEIT button - End game early (0 points penalty)
+
+### Buttons
+- FORFEIT - End game early (0 points penalty)
 - Settings - Toggle sound, haptics, performance mode
 
 ## Data Persistence (localStorage)
