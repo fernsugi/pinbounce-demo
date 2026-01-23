@@ -1186,10 +1186,12 @@ class GameState {
         // Fever Time fairies and jackpot
         this.fairies = [];           // Array of fairy objects
         this.fairiesCollected = 0;   // Count of collected fairies
+        this.fairyHuntAvailable = true;  // Can fairies spawn? Need 3+ O's to unlock again
         this.jackpotState = 'idle';  // idle, spinning, reward
         this.jackpotResults = [];    // Array of 'O' or 'X'
         this.jackpotRevealIndex = 0; // Current slot being revealed
         this.jackpotRewardTimer = 0; // Seconds of auto-shooting remaining
+        this.lastJackpotOCount = 0;  // Track O's for unlock display
 
         // Debug stats
         this.debugStats = {
@@ -1223,10 +1225,12 @@ class GameState {
         // Reset fairies and jackpot
         this.fairies = [];
         this.fairiesCollected = 0;
+        this.fairyHuntAvailable = true;  // Start fresh each game
         this.jackpotState = 'idle';
         this.jackpotResults = [];
         this.jackpotRevealIndex = 0;
         this.jackpotRewardTimer = 0;
+        this.lastJackpotOCount = 0;
         // Shuffle basket order
         this.basketOrder = [0, 1, 2, 3, 4];
         for (let i = this.basketOrder.length - 1; i > 0; i--) {
@@ -2850,6 +2854,8 @@ class Renderer {
 
         // Draw status text
         const gs = this.gameState;
+        const isFeverTime = gs.remainingBlocks === 0 && gs.balls.length > 0;
+
         if (gs.fairies.length > 0 || gs.fairiesCollected > 0) {
             this.ctx.save();
             this.ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
@@ -2865,6 +2871,20 @@ class Renderer {
                 statusText += ` (${solidCount} CATCHABLE!)`;
             }
             this.ctx.fillText(statusText, this.canvas.width / 2, 80);
+            this.ctx.restore();
+        } else if (isFeverTime && !gs.fairyHuntAvailable && gs.jackpotState === 'idle') {
+            // Show locked message during Fever Time when fairy hunt is locked
+            this.ctx.save();
+            this.ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillStyle = '#ff6666';
+            this.ctx.shadowColor = '#aa0000';
+            this.ctx.shadowBlur = 8;
+            this.ctx.fillText('🔒 FAIRY HUNT LOCKED', this.canvas.width / 2, 80);
+            this.ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+            this.ctx.fillStyle = '#aaa';
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillText('(Need 3+ O\'s in jackpot to unlock)', this.canvas.width / 2, 98);
             this.ctx.restore();
         }
     }
@@ -2991,6 +3011,71 @@ class Renderer {
                 this.ctx.shadowBlur = 0;
                 this.ctx.fillText('?', slotX, slotY);
             }
+        }
+
+        // Count revealed O's
+        const revealedResults = gs.jackpotResults.slice(0, gs.jackpotRevealIndex);
+        const oCount = revealedResults.filter(r => r === 'O').length;
+
+        // Draw unlock progress indicator
+        this.ctx.shadowBlur = 0;
+        this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+
+        // Progress bar background
+        const barWidth = 200;
+        const barHeight = 20;
+        const barY = 60;
+
+        this.ctx.fillStyle = '#1a1a2e';
+        this.ctx.beginPath();
+        this.roundRect(-barWidth/2, barY, barWidth, barHeight, 5);
+        this.ctx.fill();
+
+        // Progress fill (3 segments for 3 O's needed)
+        const segmentWidth = barWidth / 3;
+        for (let i = 0; i < Math.min(oCount, 3); i++) {
+            const segX = -barWidth/2 + i * segmentWidth;
+            this.ctx.fillStyle = i < 2 ? '#00aa55' : '#00ff88';
+            this.ctx.beginPath();
+            if (i === 0) {
+                this.roundRect(segX, barY, segmentWidth - 2, barHeight, {tl: 5, bl: 5, tr: 0, br: 0});
+            } else if (i === 2) {
+                this.roundRect(segX + 2, barY, segmentWidth - 2, barHeight, {tl: 0, bl: 0, tr: 5, br: 5});
+            } else {
+                this.ctx.fillRect(segX + 1, barY, segmentWidth - 2, barHeight);
+            }
+            this.ctx.fill();
+        }
+
+        // Segment dividers
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 2;
+        for (let i = 1; i < 3; i++) {
+            const divX = -barWidth/2 + i * segmentWidth;
+            this.ctx.beginPath();
+            this.ctx.moveTo(divX, barY);
+            this.ctx.lineTo(divX, barY + barHeight);
+            this.ctx.stroke();
+        }
+
+        // Border
+        this.ctx.strokeStyle = '#555';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.roundRect(-barWidth/2, barY, barWidth, barHeight, 5);
+        this.ctx.stroke();
+
+        // Label
+        if (oCount >= 3) {
+            this.ctx.fillStyle = '#00ff88';
+            this.ctx.shadowColor = '#00ff88';
+            this.ctx.shadowBlur = 10;
+            this.ctx.fillText('✓ FAIRY HUNT UNLOCKED!', 0, barY + barHeight + 15);
+        } else {
+            this.ctx.fillStyle = '#aaa';
+            this.ctx.fillText(`${oCount}/3 O's for FAIRY HUNT`, 0, barY + barHeight + 15);
         }
 
         this.ctx.restore();
@@ -3868,8 +3953,8 @@ class Game {
         const WARNING_TIME = 800;          // Flash warning before becoming solid
         const CYCLE_TIME = GHOST_DURATION + SOLID_DURATION;
 
-        // Spawn 5 fairies if none exist
-        if (gs.fairies.length === 0 && gs.fairiesCollected < 5) {
+        // Spawn 5 fairies if none exist AND fairy hunt is available
+        if (gs.fairies.length === 0 && gs.fairiesCollected < 5 && gs.fairyHuntAvailable) {
             const now = Date.now();
             for (let i = 0; i < 5; i++) {
                 const angle = Math.random() * Math.PI * 2;
@@ -4036,6 +4121,7 @@ class Game {
 
         // Count O's - each O = 1 second of auto-shooting
         const oCount = gs.jackpotResults.filter(r => r === 'O').length;
+        gs.lastJackpotOCount = oCount;  // Store for display
 
         if (oCount > 0) {
             gs.jackpotState = 'reward';
@@ -4051,7 +4137,7 @@ class Game {
                 isPoints: true
             });
         } else {
-            // No O's - end jackpot
+            // No O's - end jackpot immediately
             this.endJackpot();
         }
     }
@@ -4096,6 +4182,32 @@ class Game {
 
     endJackpot() {
         const gs = this.gameState;
+
+        // Unlock fairy hunt again only if got 3+ O's
+        const oCount = gs.lastJackpotOCount;
+        gs.fairyHuntAvailable = oCount >= 3;
+
+        // Show unlock/lock message
+        if (oCount >= 3) {
+            gs.damageTexts.push({
+                x: this.canvas.width / 2,
+                y: this.canvas.height / 2 + 40,
+                damage: 'FAIRY HUNT UNLOCKED!',
+                life: 2000,
+                maxLife: 2000,
+                isPoints: true
+            });
+        } else {
+            gs.damageTexts.push({
+                x: this.canvas.width / 2,
+                y: this.canvas.height / 2 + 40,
+                damage: 'FAIRY HUNT LOCKED',
+                life: 2000,
+                maxLife: 2000,
+                isPoints: false
+            });
+        }
+
         gs.jackpotState = 'idle';
         gs.jackpotResults = [];
         gs.jackpotRevealIndex = 0;
