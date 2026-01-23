@@ -95,8 +95,9 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - SKILL baskets become PORTAL - teleport balls back to base
 - Basket multipliers increase: x1→x3, x3→x5
 - Cannot spin new balls during Fever Time (prevents cheating)
+- **Mode selection**: 50/50 chance of Fairy Hunt or Tomb Wall
 
-### Fairies (Fever Time)
+### Fairy Hunt (Fever Time)
 - 5 fairies spawn when Fever Time begins
 - Phase system cycles between GHOST and SOLID:
   - GHOST (4 sec): Purple/translucent, invincible - balls pass through
@@ -119,6 +120,21 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
   - 0-2 O's: "FAIRY HUNT LOCKED" - no more fairies this Fever Time
   - Progress bar shows O count during spin (X/3 for unlock)
   - Resets to unlocked at start of each new game
+
+### Tomb Wall (Fever Time)
+- Two vertical walls squeeze from left and right edges toward center
+- Walls take 10 seconds to fully close (adjustable via `tombWallDuration`)
+- Leave a 40px gap in the middle when fully closed
+- Balls bounce off tomb walls and gain +1 point per hit
+- When fully closed: all obstacle walls are crushed and destroyed
+- Purple stone texture with hieroglyph decorations
+- HUD shows progress percentage and time remaining
+
+### Ball Points Display
+- Points accumulated by ball shown above it
+- Font size scales with amount (14px base, up to 3x scaling)
+- Yellow glow effect when points >= 50
+- Yellow text color when points >= 100
 
 ### Ball Physics
 - Tiny random velocity nudge on wall bounce prevents infinite loops
