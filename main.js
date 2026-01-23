@@ -1203,6 +1203,8 @@ class GameState {
         this.tombWallDuration = 10;  // Seconds for walls to reach center (adjustable)
         this.tombWallGap = 40;       // Gap size in pixels when fully closed
         this.tombWallCrushed = false; // Have obstacle walls been crushed?
+        this.tombWallDirection = 'horizontal'; // 'horizontal', 'vertical', 'diagonal1', 'diagonal2'
+        this.tombWallExplodeTimer = 0; // Timer before walls explode and disappear
 
         // Debug stats
         this.debugStats = {
@@ -1249,6 +1251,8 @@ class GameState {
         this.tombWallActive = false;
         this.tombWallProgress = 0;
         this.tombWallCrushed = false;
+        this.tombWallDirection = 'horizontal';
+        this.tombWallExplodeTimer = 0;
         // Shuffle basket order
         this.basketOrder = [0, 1, 2, 3, 4];
         for (let i = this.basketOrder.length - 1; i > 0; i--) {
@@ -2028,29 +2032,108 @@ class Renderer {
     }
 
     clear() {
-        // Background with subtle gradient
-        const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, '#0f0f23');
-        gradient.addColorStop(0.5, '#151530');
-        gradient.addColorStop(1, '#0a0a18');
-        this.ctx.fillStyle = gradient;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        const isFeverTime = this.gameState.remainingBlocks === 0 &&
+                            this.gameState.balls.length > 0 &&
+                            !this.gameState.isGameOver;
 
-        // Subtle grid pattern
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
-        this.ctx.lineWidth = 1;
-        const gridSize = 40;
-        for (let x = 0; x < this.canvas.width; x += gridSize) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, 0);
-            this.ctx.lineTo(x, this.canvas.height);
-            this.ctx.stroke();
+        if (isFeverTime) {
+            // FEVER TIME - Fiery background
+            const time = Date.now();
+            const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+
+            // Pulsing fire colors
+            const pulse = 0.5 + Math.sin(time * 0.003) * 0.1;
+            gradient.addColorStop(0, `rgba(40, 10, 0, 1)`);
+            gradient.addColorStop(0.3, `rgba(60, 20, 5, 1)`);
+            gradient.addColorStop(0.7, `rgba(50, 15, 0, 1)`);
+            gradient.addColorStop(1, `rgba(30, 5, 0, 1)`);
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+            // Draw flame effects in background
+            this.drawFeverFlames(time);
+
+            // Draw fever time label in background (not blocking)
+            this.drawFeverLabel(time);
+
+        } else {
+            // Normal background with subtle gradient
+            const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+            gradient.addColorStop(0, '#0f0f23');
+            gradient.addColorStop(0.5, '#151530');
+            gradient.addColorStop(1, '#0a0a18');
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+            // Subtle grid pattern
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+            this.ctx.lineWidth = 1;
+            const gridSize = 40;
+            for (let x = 0; x < this.canvas.width; x += gridSize) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, 0);
+                this.ctx.lineTo(x, this.canvas.height);
+                this.ctx.stroke();
+            }
+            for (let y = 0; y < this.canvas.height; y += gridSize) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, y);
+                this.ctx.lineTo(this.canvas.width, y);
+                this.ctx.stroke();
+            }
         }
-        for (let y = 0; y < this.canvas.height; y += gridSize) {
+    }
+
+    drawFeverFlames(time) {
+        // Draw animated flame columns rising from bottom
+        const flameCount = 12;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        for (let i = 0; i < flameCount; i++) {
+            const x = (w / flameCount) * i + (w / flameCount / 2);
+            const phase = time * 0.002 + i * 0.5;
+            const flameHeight = 100 + Math.sin(phase) * 50 + Math.sin(phase * 1.7) * 30;
+            const flameWidth = 30 + Math.sin(phase * 0.8) * 10;
+
+            // Flame gradient (bottom to top)
+            const gradient = this.ctx.createLinearGradient(x, h, x, h - flameHeight);
+            gradient.addColorStop(0, 'rgba(255, 100, 0, 0.4)');
+            gradient.addColorStop(0.3, 'rgba(255, 60, 0, 0.25)');
+            gradient.addColorStop(0.6, 'rgba(255, 30, 0, 0.15)');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+
+            this.ctx.fillStyle = gradient;
             this.ctx.beginPath();
-            this.ctx.moveTo(0, y);
-            this.ctx.lineTo(this.canvas.width, y);
-            this.ctx.stroke();
+            this.ctx.moveTo(x - flameWidth, h);
+            this.ctx.quadraticCurveTo(
+                x - flameWidth * 0.5 + Math.sin(phase * 2) * 10,
+                h - flameHeight * 0.5,
+                x + Math.sin(phase * 3) * 15,
+                h - flameHeight
+            );
+            this.ctx.quadraticCurveTo(
+                x + flameWidth * 0.5 + Math.sin(phase * 2.5) * 10,
+                h - flameHeight * 0.5,
+                x + flameWidth,
+                h
+            );
+            this.ctx.closePath();
+            this.ctx.fill();
+        }
+
+        // Add some floating embers
+        for (let i = 0; i < 20; i++) {
+            const emberPhase = time * 0.001 + i * 0.7;
+            const x = (Math.sin(emberPhase * 0.3 + i) * 0.5 + 0.5) * w;
+            const y = h - ((time * 0.05 + i * 50) % h);
+            const size = 2 + Math.sin(emberPhase) * 1;
+            const alpha = 0.3 + Math.sin(emberPhase * 2) * 0.2;
+
+            this.ctx.fillStyle = `rgba(255, ${150 + Math.sin(emberPhase) * 50}, 0, ${alpha})`;
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, size, 0, Math.PI * 2);
+            this.ctx.fill();
         }
     }
 
@@ -2280,6 +2363,32 @@ class Renderer {
 
         this.ctx.shadowBlur = 0;
 
+        // Draw queued ball count under base
+        if (this.game && this.game.queuedBalls && this.game.queuedBalls.length > 0) {
+            let totalBalls = 0;
+            for (const q of this.game.queuedBalls) {
+                totalBalls += q.count;
+            }
+
+            if (totalBalls > 0) {
+                // Small badge showing ball count
+                this.ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+
+                // Background pill
+                const badgeY = baseY + baseHeight + 12;
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                this.ctx.beginPath();
+                this.roundRect(baseX - 18, badgeY - 8, 36, 16, 8);
+                this.ctx.fill();
+
+                // Text
+                this.ctx.fillStyle = '#00d2d3';
+                this.ctx.fillText(`×${totalBalls}`, baseX, badgeY);
+            }
+        }
+
         // Draw pending skill indicator
         if (this.gameState.pendingSkill) {
             const skillNames = {
@@ -2295,14 +2404,17 @@ class Renderer {
             const skillName = skillNames[this.gameState.pendingSkill] || this.gameState.pendingSkill.toUpperCase();
             const skillColor = skillColors[this.gameState.pendingSkill] || '#ffd700';
 
-            // Draw below base
+            // Draw below base (offset if queue badge shown)
+            const skillY = (this.game && this.game.queuedBalls && this.game.queuedBalls.length > 0)
+                ? baseY + baseHeight + 28
+                : baseY + baseHeight + 8;
             this.ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'top';
             this.ctx.fillStyle = skillColor;
             this.ctx.shadowColor = skillColor;
             this.ctx.shadowBlur = 8;
-            this.ctx.fillText(`NEXT: ${skillName}`, baseX, baseY + baseHeight + 8);
+            this.ctx.fillText(`NEXT: ${skillName}`, baseX, skillY);
             this.ctx.shadowBlur = 0;
         }
     }
@@ -2734,59 +2846,36 @@ class Renderer {
         this.drawJackpot();
     }
 
-    drawFeverTime() {
+    drawFeverLabel(time) {
+        // Draw fever time label in background (called from clear())
         const cx = this.canvas.width / 2;
-        const cy = this.canvas.height / 2 - 50;
-        const time = Date.now();
-
-        // Pulsing scale
-        const pulse = 1 + Math.sin(time * 0.01) * 0.15;
-
-        // Cycling fire colors (faster)
-        const hue = (time * 0.3) % 60;  // Orange to red range
-        const mainColor = `hsl(${hue}, 100%, 55%)`;
-        const glowColor = `hsl(${hue + 20}, 100%, 65%)`;
 
         this.ctx.save();
-        this.ctx.translate(cx, cy);
-        this.ctx.scale(pulse, pulse);
 
-        // Background banner (bigger)
-        const bannerWidth = 280;
-        const bannerHeight = 70;
-        const bannerGradient = this.ctx.createLinearGradient(-bannerWidth/2, 0, bannerWidth/2, 0);
-        bannerGradient.addColorStop(0, 'rgba(255, 100, 0, 0)');
-        bannerGradient.addColorStop(0.15, 'rgba(255, 50, 0, 0.9)');
-        bannerGradient.addColorStop(0.5, 'rgba(255, 80, 0, 1)');
-        bannerGradient.addColorStop(0.85, 'rgba(255, 50, 0, 0.9)');
-        bannerGradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
-        this.ctx.fillStyle = bannerGradient;
-        this.ctx.fillRect(-bannerWidth/2, -bannerHeight/2, bannerWidth, bannerHeight);
+        // Pulsing glow
+        const pulse = 0.8 + Math.sin(time * 0.008) * 0.2;
+        const hue = (time * 0.2) % 60;
 
-        // Text glow (stronger)
-        this.ctx.shadowColor = glowColor;
-        this.ctx.shadowBlur = 30 + Math.sin(time * 0.015) * 15;
+        // Small label background
+        this.ctx.fillStyle = `rgba(80, 20, 0, 0.5)`;
+        this.ctx.beginPath();
+        this.roundRect(cx - 80, 102, 160, 28, 14);
+        this.ctx.fill();
 
-        // Main text (bigger)
-        this.ctx.font = 'bold 36px "Segoe UI", system-ui, sans-serif';
+        // Text
+        this.ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
-        this.ctx.fillStyle = mainColor;
-        this.ctx.fillText('FEVER TIME!', 0, -5);
-
-        // White outline for pop
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeText('FEVER TIME!', 0, -5);
-
-        // Bonus indicator
-        this.ctx.shadowBlur = 5;
+        this.ctx.fillStyle = `hsla(${hue}, 100%, ${50 + pulse * 15}%, 0.8)`;
         this.ctx.shadowColor = '#ff6600';
-        this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
-        this.ctx.fillStyle = '#ffff00';
-        this.ctx.fillText('Bounces power up balls!', 0, 22);
+        this.ctx.shadowBlur = 10 * pulse;
+        this.ctx.fillText('🔥 FEVER TIME 🔥', cx, 116);
 
         this.ctx.restore();
+    }
+
+    drawFeverTime() {
+        // Now empty - label is drawn in background via drawFeverLabel()
     }
 
     drawFairies() {
@@ -3026,59 +3115,13 @@ class Renderer {
         if (!gs.tombWallActive) return;
 
         const time = Date.now();
+        const direction = gs.tombWallDirection;
 
-        // Get wall positions from state
-        const leftX = gs.tombWallLeftX || 0;
-        const rightX = gs.tombWallRightX || this.canvas.width - 30;
-        const wallWidth = gs.tombWallWidth || 30;
-        const wallHeight = gs.tombWallHeight || this.canvas.height - 40;
-        const topY = 60;
-
-        // Draw left wall
         this.ctx.save();
 
-        // Stone texture gradient for left wall
-        const leftGradient = this.ctx.createLinearGradient(leftX, 0, leftX + wallWidth, 0);
-        leftGradient.addColorStop(0, '#2a2a3a');
-        leftGradient.addColorStop(0.3, '#4a4a5a');
-        leftGradient.addColorStop(0.7, '#3a3a4a');
-        leftGradient.addColorStop(1, '#5a5a6a');
-        this.ctx.fillStyle = leftGradient;
-        this.ctx.fillRect(leftX, topY, wallWidth, wallHeight);
-
-        // Left wall border glow
-        this.ctx.strokeStyle = '#8866aa';
-        this.ctx.lineWidth = 3;
-        this.ctx.shadowColor = '#aa88ff';
-        this.ctx.shadowBlur = 10 + Math.sin(time * 0.005) * 5;
-        this.ctx.strokeRect(leftX, topY, wallWidth, wallHeight);
-
-        // Draw right wall
-        const rightGradient = this.ctx.createLinearGradient(rightX, 0, rightX + wallWidth, 0);
-        rightGradient.addColorStop(0, '#5a5a6a');
-        rightGradient.addColorStop(0.3, '#3a3a4a');
-        rightGradient.addColorStop(0.7, '#4a4a5a');
-        rightGradient.addColorStop(1, '#2a2a3a');
-        this.ctx.fillStyle = rightGradient;
-        this.ctx.fillRect(rightX, topY, wallWidth, wallHeight);
-
-        // Right wall border glow
-        this.ctx.strokeRect(rightX, topY, wallWidth, wallHeight);
-
-        // Draw hieroglyph-like decorations on walls
-        this.ctx.shadowBlur = 0;
-        this.ctx.fillStyle = `rgba(136, 102, 170, ${0.3 + Math.sin(time * 0.003) * 0.2})`;
-        this.ctx.font = '16px serif';
-
-        const symbols = ['☥', '𓂀', '◇', '△', '○', '▽'];
-        const symbolSpacing = 50;
-        for (let y = topY + 30; y < topY + wallHeight - 30; y += symbolSpacing) {
-            const symbolIdx = Math.floor((y - topY) / symbolSpacing) % symbols.length;
-            // Left wall symbols
-            this.ctx.fillText(symbols[symbolIdx], leftX + wallWidth / 2 - 5, y);
-            // Right wall symbols
-            this.ctx.fillText(symbols[(symbolIdx + 3) % symbols.length], rightX + wallWidth / 2 - 5, y);
-        }
+        // Draw both walls
+        if (gs.tombWall1) this.drawSingleTombWall(gs.tombWall1, time);
+        if (gs.tombWall2) this.drawSingleTombWall(gs.tombWall2, time);
 
         this.ctx.restore();
 
@@ -3091,7 +3134,8 @@ class Renderer {
         this.ctx.shadowBlur = 8;
 
         const progressPercent = Math.floor(gs.tombWallProgress * 100);
-        this.ctx.fillText(`TOMB WALL: ${progressPercent}%`, this.canvas.width / 2, 80);
+        const dirLabel = direction === 'horizontal' ? '↔' : direction === 'vertical' ? '↕' : '⤢';
+        this.ctx.fillText(`TOMB WALL ${dirLabel}: ${progressPercent}%`, this.canvas.width / 2, 80);
 
         // Time remaining
         const timeRemaining = Math.ceil(gs.tombWallDuration * (1 - gs.tombWallProgress));
@@ -3099,6 +3143,95 @@ class Renderer {
         this.ctx.fillStyle = '#888';
         this.ctx.shadowBlur = 0;
         this.ctx.fillText(`${timeRemaining}s remaining`, this.canvas.width / 2, 98);
+
+        this.ctx.restore();
+    }
+
+    drawSingleTombWall(wall, time) {
+        this.ctx.save();
+
+        // Glowing border color
+        this.ctx.strokeStyle = '#8866aa';
+        this.ctx.lineWidth = 3;
+        this.ctx.shadowColor = '#aa88ff';
+        this.ctx.shadowBlur = 10 + Math.sin(time * 0.005) * 5;
+
+        if (wall.diagonal) {
+            // Draw diagonal wall as thick line
+            const dx = wall.x2 - wall.x1;
+            const dy = wall.y2 - wall.y1;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const nx = -dy / len * wall.thickness / 2;
+            const ny = dx / len * wall.thickness / 2;
+
+            // Create gradient along the wall
+            const gradient = this.ctx.createLinearGradient(wall.x1, wall.y1, wall.x2, wall.y2);
+            gradient.addColorStop(0, '#2a2a3a');
+            gradient.addColorStop(0.5, '#4a4a5a');
+            gradient.addColorStop(1, '#2a2a3a');
+
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.moveTo(wall.x1 + nx, wall.y1 + ny);
+            this.ctx.lineTo(wall.x2 + nx, wall.y2 + ny);
+            this.ctx.lineTo(wall.x2 - nx, wall.y2 - ny);
+            this.ctx.lineTo(wall.x1 - nx, wall.y1 - ny);
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.stroke();
+
+            // Draw symbols along diagonal
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillStyle = `rgba(136, 102, 170, ${0.3 + Math.sin(time * 0.003) * 0.2})`;
+            this.ctx.font = '14px serif';
+            const symbols = ['☥', '◇', '△', '○'];
+            const step = 60;
+            for (let t = step; t < len - step; t += step) {
+                const px = wall.x1 + (dx / len) * t;
+                const py = wall.y1 + (dy / len) * t;
+                const symIdx = Math.floor(t / step) % symbols.length;
+                this.ctx.fillText(symbols[symIdx], px - 5, py + 5);
+            }
+        } else {
+            // Draw axis-aligned wall
+            const isVertical = wall.width < wall.height;
+            let gradient;
+            if (isVertical) {
+                gradient = this.ctx.createLinearGradient(wall.x, 0, wall.x + wall.width, 0);
+            } else {
+                gradient = this.ctx.createLinearGradient(0, wall.y, 0, wall.y + wall.height);
+            }
+            gradient.addColorStop(0, '#2a2a3a');
+            gradient.addColorStop(0.3, '#4a4a5a');
+            gradient.addColorStop(0.7, '#3a3a4a');
+            gradient.addColorStop(1, '#5a5a6a');
+
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+            this.ctx.strokeRect(wall.x, wall.y, wall.width, wall.height);
+
+            // Draw symbols
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillStyle = `rgba(136, 102, 170, ${0.3 + Math.sin(time * 0.003) * 0.2})`;
+            this.ctx.font = '14px serif';
+            const symbols = ['☥', '◇', '△', '○', '▽'];
+
+            if (isVertical) {
+                // Vertical wall - symbols along height
+                const spacing = 50;
+                for (let y = wall.y + 25; y < wall.y + wall.height - 25; y += spacing) {
+                    const symIdx = Math.floor((y - wall.y) / spacing) % symbols.length;
+                    this.ctx.fillText(symbols[symIdx], wall.x + wall.width / 2 - 5, y);
+                }
+            } else {
+                // Horizontal wall - symbols along width
+                const spacing = 50;
+                for (let x = wall.x + 25; x < wall.x + wall.width - 25; x += spacing) {
+                    const symIdx = Math.floor((x - wall.x) / spacing) % symbols.length;
+                    this.ctx.fillText(symbols[symIdx], x, wall.y + wall.height / 2 + 5);
+                }
+            }
+        }
 
         this.ctx.restore();
     }
@@ -3123,10 +3256,6 @@ class Renderer {
             this.ctx.restore();
             return;
         }
-
-        // Darkened background overlay (only during spinning)
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // Jackpot container
         const containerWidth = 300;
@@ -3739,7 +3868,7 @@ class Game {
         this.audio.init();
 
         if (!this.isInGame || this.gameState.isGameOver) return;
-        if (this.gameState.slotState !== 'idle') return;  // Can't launch while slot is spinning
+        // Removed restriction: can now launch while slot is spinning
 
         if (this.queuedBalls.length > 0) {
             this.launchQueuedBalls();
@@ -4456,33 +4585,135 @@ class Game {
         const progressPerSecond = 1 / gs.tombWallDuration;
         gs.tombWallProgress = Math.min(1, gs.tombWallProgress + progressPerSecond * (dt / 1000));
 
-        // Calculate wall positions
         const canvasWidth = this.canvas.width;
         const canvasHeight = this.canvas.height;
-        const wallWidth = 30;
+        const wallThickness = 30;
         const centerX = canvasWidth / 2;
+        const centerY = canvasHeight / 2;
         const finalGap = gs.tombWallGap;
+        const direction = gs.tombWallDirection;
 
-        // Walls start at edges, move to center leaving a gap
-        // Left wall: starts at 0, ends at (centerX - finalGap/2 - wallWidth)
-        // Right wall: starts at (canvasWidth - wallWidth), ends at (centerX + finalGap/2)
-        const leftWallStartX = 0;
-        const leftWallEndX = centerX - finalGap / 2 - wallWidth;
-        const rightWallStartX = canvasWidth - wallWidth;
-        const rightWallEndX = centerX + finalGap / 2;
+        // Calculate wall positions based on direction
+        let wall1 = {}, wall2 = {};
 
-        const leftWallX = leftWallStartX + (leftWallEndX - leftWallStartX) * gs.tombWallProgress;
-        const rightWallX = rightWallStartX + (rightWallEndX - rightWallStartX) * gs.tombWallProgress;
+        if (direction === 'horizontal') {
+            // Left and right walls
+            const leftEnd = centerX - finalGap / 2 - wallThickness;
+            const rightEnd = centerX + finalGap / 2;
+            wall1 = {
+                x: 0 + (leftEnd - 0) * gs.tombWallProgress,
+                y: 60,
+                width: wallThickness,
+                height: canvasHeight - 100,
+                normalX: 1, normalY: 0
+            };
+            wall2 = {
+                x: (canvasWidth - wallThickness) + (rightEnd - (canvasWidth - wallThickness)) * gs.tombWallProgress,
+                y: 60,
+                width: wallThickness,
+                height: canvasHeight - 100,
+                normalX: -1, normalY: 0
+            };
+        } else if (direction === 'vertical') {
+            // Top and bottom walls
+            const topEnd = centerY - finalGap / 2 - wallThickness;
+            const bottomEnd = centerY + finalGap / 2;
+            wall1 = {
+                x: 30,
+                y: 60 + (topEnd - 60) * gs.tombWallProgress,
+                width: canvasWidth - 60,
+                height: wallThickness,
+                normalX: 0, normalY: 1
+            };
+            wall2 = {
+                x: 30,
+                y: (canvasHeight - 60 - wallThickness) + (bottomEnd - (canvasHeight - 60 - wallThickness)) * gs.tombWallProgress,
+                width: canvasWidth - 60,
+                height: wallThickness,
+                normalX: 0, normalY: -1
+            };
+        } else if (direction === 'diagonal1') {
+            // Diagonal walls "/" direction - parallel lines that translate inward
+            const playAreaTop = 60;
+            const playAreaBottom = canvasHeight - 40;
 
-        // Store for collision detection and rendering
-        gs.tombWallLeftX = leftWallX;
-        gs.tombWallRightX = rightWallX;
-        gs.tombWallWidth = wallWidth;
-        gs.tombWallHeight = canvasHeight - 40;  // Leave space for baskets
+            // Diagonal walls need a MUCH larger gap to leave room for balls
+            const diagonalGap = Math.max(80, finalGap * 2);  // At least 80px gap
+            const startOffset = canvasWidth * 0.4;
+            const endOffset = diagonalGap;  // Larger end offset
+            const currentOffset = startOffset - (startOffset - endOffset) * gs.tombWallProgress;
 
-        // When tomb walls fully close, crush all obstacle walls
+            // Wall 1: starts at top-left area
+            wall1 = {
+                x1: 0,
+                y1: playAreaTop + currentOffset,
+                x2: canvasWidth - currentOffset,
+                y2: playAreaBottom,
+                thickness: wallThickness,
+                normalX: 0.6, normalY: 0.8,  // Inward points toward center
+                diagonal: true
+            };
+
+            // Wall 2: starts at bottom-right area
+            wall2 = {
+                x1: currentOffset,
+                y1: playAreaTop,
+                x2: canvasWidth,
+                y2: playAreaBottom - currentOffset,
+                thickness: wallThickness,
+                normalX: -0.6, normalY: -0.8,  // Inward points toward center
+                diagonal: true
+            };
+        } else if (direction === 'diagonal2') {
+            // Diagonal walls "\" direction - parallel lines that translate inward
+            const playAreaTop = 60;
+            const playAreaBottom = canvasHeight - 40;
+
+            // Diagonal walls need a MUCH larger gap
+            const diagonalGap = Math.max(80, finalGap * 2);
+            const startOffset = canvasWidth * 0.4;
+            const endOffset = diagonalGap;
+            const currentOffset = startOffset - (startOffset - endOffset) * gs.tombWallProgress;
+
+            // Wall 1: starts at top-right area
+            wall1 = {
+                x1: canvasWidth,
+                y1: playAreaTop + currentOffset,
+                x2: currentOffset,
+                y2: playAreaBottom,
+                thickness: wallThickness,
+                normalX: -0.6, normalY: 0.8,  // Inward points toward center
+                diagonal: true
+            };
+
+            // Wall 2: starts at bottom-left area
+            wall2 = {
+                x1: canvasWidth - currentOffset,
+                y1: playAreaTop,
+                x2: 0,
+                y2: playAreaBottom - currentOffset,
+                thickness: wallThickness,
+                normalX: 0.6, normalY: -0.8,  // Inward points toward center
+                diagonal: true
+            };
+        }
+
+        // Store for rendering and collision
+        gs.tombWall1 = wall1;
+        gs.tombWall2 = wall2;
+
+        // Legacy support for horizontal (used by old code)
+        if (direction === 'horizontal') {
+            gs.tombWallLeftX = wall1.x;
+            gs.tombWallRightX = wall2.x;
+            gs.tombWallWidth = wallThickness;
+            gs.tombWallHeight = wall1.height;
+        }
+
+        // When tomb walls fully close, crush all obstacle walls and start explode timer
         if (gs.tombWallProgress >= 1 && !gs.tombWallCrushed) {
             gs.tombWallCrushed = true;
+            gs.tombWallExplodeTimer = 2.0; // 2 seconds until tomb walls explode
 
             // Emit particles for each destroyed wall
             for (const wall of gs.walls) {
@@ -4509,29 +4740,226 @@ class Game {
             });
         }
 
-        // Check ball collisions with tomb walls
-        for (const ball of gs.balls) {
-            // Left wall collision (right edge of wall)
-            const leftWallRight = leftWallX + wallWidth;
-            if (ball.x - ball.radius < leftWallRight && ball.x + ball.radius > leftWallX) {
-                if (ball.y > 60 && ball.y < canvasHeight - 40) {
-                    // Push ball out to the right
-                    ball.x = leftWallRight + ball.radius;
-                    if (ball.vx < 0) {
-                        ball.vx = -ball.vx * 0.9;  // Bounce with slight damping
-                        ball.points += 1;  // Bonus point for tomb wall hit
+        // Count down explode timer and destroy tomb walls
+        if (gs.tombWallCrushed && gs.tombWallExplodeTimer > 0) {
+            gs.tombWallExplodeTimer -= dt / 1000;
+
+            if (gs.tombWallExplodeTimer <= 0) {
+                // EXPLODE the tomb walls!
+                gs.tombWallExplodeTimer = 0;
+                gs.tombWallActive = false;
+
+                // Massive particle explosion along both walls
+                if (wall1.diagonal) {
+                    // Diagonal walls - emit along the line
+                    for (let t = 0; t <= 1; t += 0.1) {
+                        const px1 = wall1.x1 + (wall1.x2 - wall1.x1) * t;
+                        const py1 = wall1.y1 + (wall1.y2 - wall1.y1) * t;
+                        const px2 = wall2.x1 + (wall2.x2 - wall2.x1) * t;
+                        const py2 = wall2.y1 + (wall2.y2 - wall2.y1) * t;
+                        if (px1 > 0 && px1 < canvasWidth && py1 > 60 && py1 < canvasHeight - 40) {
+                            this.particles.emit(px1, py1, '#aa88ff', 8);
+                            this.particles.emit(px1, py1, '#ffaa00', 5);
+                        }
+                        if (px2 > 0 && px2 < canvasWidth && py2 > 60 && py2 < canvasHeight - 40) {
+                            this.particles.emit(px2, py2, '#aa88ff', 8);
+                            this.particles.emit(px2, py2, '#ffaa00', 5);
+                        }
+                    }
+                } else {
+                    // Axis-aligned walls
+                    const steps = 10;
+                    for (let i = 0; i <= steps; i++) {
+                        if (wall1.width < wall1.height) {
+                            // Vertical walls
+                            const y = wall1.y + (wall1.height / steps) * i;
+                            this.particles.emit(wall1.x + wall1.width / 2, y, '#aa88ff', 8);
+                            this.particles.emit(wall1.x + wall1.width / 2, y, '#ffaa00', 5);
+                            this.particles.emit(wall2.x + wall2.width / 2, y, '#aa88ff', 8);
+                            this.particles.emit(wall2.x + wall2.width / 2, y, '#ffaa00', 5);
+                        } else {
+                            // Horizontal walls
+                            const x = wall1.x + (wall1.width / steps) * i;
+                            this.particles.emit(x, wall1.y + wall1.height / 2, '#aa88ff', 8);
+                            this.particles.emit(x, wall1.y + wall1.height / 2, '#ffaa00', 5);
+                            this.particles.emit(x, wall2.y + wall2.height / 2, '#aa88ff', 8);
+                            this.particles.emit(x, wall2.y + wall2.height / 2, '#ffaa00', 5);
+                        }
+                    }
+                }
+
+                // Big visual feedback
+                this.cameraShake.trigger(20, 500);
+                this.triggerFlash('#ffaa00', 0.6);
+                this.audio.blockBreak();
+
+                // Show explosion message
+                gs.damageTexts.push({
+                    x: canvasWidth / 2,
+                    y: canvasHeight / 2,
+                    damage: 'TOMB WALL DESTROYED!',
+                    life: 1500,
+                    maxLife: 1500,
+                    isPoints: true
+                });
+
+                return; // Exit early since walls are gone
+            }
+        }
+
+        // Check ball collisions with tomb walls - STRICT & SUPER BOUNCY on inward side
+        const bounceMultiplier = 1.4;
+        const maxSpeed = 15;
+
+        // Run collision check multiple times to ensure NO ball passes through
+        for (let iteration = 0; iteration < 3; iteration++) {
+            for (const ball of gs.balls) {
+                this.checkTombWallCollision(ball, wall1, bounceMultiplier, maxSpeed);
+                this.checkTombWallCollision(ball, wall2, bounceMultiplier, maxSpeed);
+            }
+        }
+    }
+
+    checkTombWallCollision(ball, wall, bounceMultiplier, maxSpeed) {
+        // STRICT collision - balls can NEVER pass through tomb walls
+        // Only the INWARD facing side gets extra bounce
+
+        if (wall.diagonal) {
+            // Diagonal wall collision - BULLETPROOF version
+            const dx = wall.x2 - wall.x1;
+            const dy = wall.y2 - wall.y1;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len === 0) return;
+
+            // Line direction normalized
+            const ldx = dx / len;
+            const ldy = dy / len;
+
+            // Perpendicular (outward from line, we'll determine which side)
+            const perpX = -ldy;
+            const perpY = ldx;
+
+            // Inward normal (pointing toward center of screen)
+            const inwardNx = wall.normalX;
+            const inwardNy = wall.normalY;
+
+            // Project ball onto line to find closest point
+            const t = ((ball.x - wall.x1) * ldx + (ball.y - wall.y1) * ldy);
+            const tClamped = Math.max(0, Math.min(len, t));
+            const closestX = wall.x1 + tClamped * ldx;
+            const closestY = wall.y1 + tClamped * ldy;
+
+            // Signed distance from ball to line (positive = one side, negative = other)
+            const signedDist = (ball.x - closestX) * perpX + (ball.y - closestY) * perpY;
+            const absDist = Math.abs(signedDist);
+            const minDist = ball.radius + wall.thickness / 2 + 2; // Extra margin
+
+            // Check if ball is too close to line (on either side)
+            if (absDist < minDist && t >= -ball.radius && t <= len + ball.radius) {
+                // Determine which side to push to
+                const pushDir = signedDist >= 0 ? 1 : -1;
+                const pushNx = perpX * pushDir;
+                const pushNy = perpY * pushDir;
+
+                // ALWAYS push ball out to safe distance
+                const pushDist = minDist - absDist + 3; // +3 safety
+                ball.x += pushNx * pushDist;
+                ball.y += pushNy * pushDist;
+
+                // Check if hitting inward side
+                const isInwardHit = (pushNx * inwardNx + pushNy * inwardNy) > 0;
+
+                // Reflect velocity if moving toward wall
+                const velDot = ball.vx * pushNx + ball.vy * pushNy;
+                if (velDot < 0) {
+                    if (isInwardHit) {
+                        // Inward side - SUPER BOUNCY
+                        ball.vx = (ball.vx - 2 * velDot * pushNx) * bounceMultiplier;
+                        ball.vy = (ball.vy - 2 * velDot * pushNy) * bounceMultiplier;
+                        ball.points += 1;
+                        this.particles.emit(closestX, closestY, '#aa88ff', 5);
+                    } else {
+                        // Outward side - normal bounce
+                        ball.vx = ball.vx - 2 * velDot * pushNx;
+                        ball.vy = ball.vy - 2 * velDot * pushNy;
+                    }
+
+                    // Clamp speed
+                    const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+                    if (speed > maxSpeed) {
+                        ball.vx = (ball.vx / speed) * maxSpeed;
+                        ball.vy = (ball.vy / speed) * maxSpeed;
                     }
                 }
             }
+        } else {
+            // Axis-aligned wall collision - STRICT
+            const wallRight = wall.x + wall.width;
+            const wallBottom = wall.y + wall.height;
 
-            // Right wall collision (left edge of wall)
-            if (ball.x + ball.radius > rightWallX && ball.x - ball.radius < rightWallX + wallWidth) {
-                if (ball.y > 60 && ball.y < canvasHeight - 40) {
-                    // Push ball out to the left
-                    ball.x = rightWallX - ball.radius;
+            // Check if ball overlaps wall at all
+            if (ball.x + ball.radius > wall.x && ball.x - ball.radius < wallRight &&
+                ball.y + ball.radius > wall.y && ball.y - ball.radius < wallBottom) {
+
+                // Find which edge is closest and push out
+                const overlapLeft = (ball.x + ball.radius) - wall.x;
+                const overlapRight = wallRight - (ball.x - ball.radius);
+                const overlapTop = (ball.y + ball.radius) - wall.y;
+                const overlapBottom = wallBottom - (ball.y - ball.radius);
+
+                // Find minimum overlap to determine push direction
+                const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+
+                if (minOverlap === overlapLeft && wall.normalX < 0) {
+                    // Push left (hitting right side of wall) - INWARD side
+                    ball.x = wall.x - ball.radius - 1;
                     if (ball.vx > 0) {
-                        ball.vx = -ball.vx * 0.9;  // Bounce with slight damping
-                        ball.points += 1;  // Bonus point for tomb wall hit
+                        ball.vx = Math.max(-maxSpeed, -ball.vx * bounceMultiplier);
+                        ball.vy *= 1.1;
+                        ball.points += 1;
+                        this.particles.emit(wall.x, ball.y, '#aa88ff', 5);
+                    }
+                } else if (minOverlap === overlapRight && wall.normalX > 0) {
+                    // Push right (hitting left side of wall) - INWARD side
+                    ball.x = wallRight + ball.radius + 1;
+                    if (ball.vx < 0) {
+                        ball.vx = Math.min(maxSpeed, -ball.vx * bounceMultiplier);
+                        ball.vy *= 1.1;
+                        ball.points += 1;
+                        this.particles.emit(wallRight, ball.y, '#aa88ff', 5);
+                    }
+                } else if (minOverlap === overlapTop && wall.normalY < 0) {
+                    // Push up (hitting bottom side of wall) - INWARD side
+                    ball.y = wall.y - ball.radius - 1;
+                    if (ball.vy > 0) {
+                        ball.vy = Math.max(-maxSpeed, -ball.vy * bounceMultiplier);
+                        ball.vx *= 1.1;
+                        ball.points += 1;
+                        this.particles.emit(ball.x, wall.y, '#aa88ff', 5);
+                    }
+                } else if (minOverlap === overlapBottom && wall.normalY > 0) {
+                    // Push down (hitting top side of wall) - INWARD side
+                    ball.y = wallBottom + ball.radius + 1;
+                    if (ball.vy < 0) {
+                        ball.vy = Math.min(maxSpeed, -ball.vy * bounceMultiplier);
+                        ball.vx *= 1.1;
+                        ball.points += 1;
+                        this.particles.emit(ball.x, wallBottom, '#aa88ff', 5);
+                    }
+                } else {
+                    // Outward side collision - just push out with normal bounce
+                    if (minOverlap === overlapLeft) {
+                        ball.x = wall.x - ball.radius - 1;
+                        if (ball.vx > 0) ball.vx = -ball.vx;
+                    } else if (minOverlap === overlapRight) {
+                        ball.x = wallRight + ball.radius + 1;
+                        if (ball.vx < 0) ball.vx = -ball.vx;
+                    } else if (minOverlap === overlapTop) {
+                        ball.y = wall.y - ball.radius - 1;
+                        if (ball.vy > 0) ball.vy = -ball.vy;
+                    } else if (minOverlap === overlapBottom) {
+                        ball.y = wallBottom + ball.radius + 1;
+                        if (ball.vy < 0) ball.vy = -ball.vy;
                     }
                 }
             }
@@ -4648,11 +5076,7 @@ class Game {
         this.checkGameEnd();
         if (this.gameState.isGameOver) return;
 
-        // Pause while slot is active
-        if (this.gameState.slotState !== 'idle') {
-            this.updateUI();
-            return;
-        }
+        // Game continues during slot spin (no pause)
 
         // Freeze game during jackpot spinning (balls stop, only jackpot animates)
         if (this.gameState.jackpotState === 'spinning') {
@@ -4733,6 +5157,9 @@ class Game {
                 if (this.gameState.feverMode === 'tomb') {
                     this.gameState.tombWallActive = true;
                     this.gameState.tombWallProgress = 0;
+                    // Random direction: horizontal, vertical, or diagonal
+                    const directions = ['horizontal', 'vertical', 'diagonal1', 'diagonal2'];
+                    this.gameState.tombWallDirection = directions[Math.floor(Math.random() * directions.length)];
                 }
             }
 
@@ -4758,6 +5185,8 @@ class Game {
                 this.gameState.tombWallActive = false;
                 this.gameState.tombWallProgress = 0;
                 this.gameState.tombWallCrushed = false;
+                this.gameState.tombWallDirection = 'horizontal';
+                this.gameState.tombWallExplodeTimer = 0;
             }
         }
 

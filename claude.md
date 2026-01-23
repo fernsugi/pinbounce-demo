@@ -67,6 +67,8 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Triple match = 3 balls, double match = 2 balls, no match = 1 ball
 - All different colors = Rainbow ball (special, destroys any block instantly)
 - Auto-completes quickly (~450ms) - no interaction needed
+- **Non-blocking**: Game continues during spin (balls bounce, base moves)
+- Can launch queued balls while slot is spinning
 
 ### Blocks
 - Colored blocks (red/yellow/blue) - matching ball color deals 5 damage, mismatched deals 1 damage
@@ -90,7 +92,8 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 
 ### Fever Time
 - Activates when all blocks are cleared and balls are still bouncing
-- Flashy "FEVER TIME!" banner appears in center
+- **Fiery background** with animated flame columns and floating embers
+- Small "FEVER TIME" label in background (non-blocking)
 - Wall bounces add +1 to ball's accumulated points (multiplied by basket)
 - SKILL baskets become PORTAL - teleport balls back to base
 - Basket multipliers increase: x1→x3, x3→x5
@@ -126,13 +129,17 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
   - Resets to unlocked at start of each new game
 
 ### Tomb Wall (Fever Time)
-- Two vertical walls squeeze from left and right edges toward center
+- Two parallel walls squeeze inward toward center
+- **Random direction**: horizontal (↔), vertical (↕), or diagonal (⤢)
 - Walls take 10 seconds to fully close (adjustable via `tombWallDuration`)
 - Leave a 40px gap in the middle when fully closed
-- Balls bounce off tomb walls and gain +1 point per hit
+- **Super bouncy**: Inward-facing side has 1.4x bounce multiplier + bonus points
+- Outward-facing side has normal bounce (no bonus)
+- Balls can NEVER pass through tomb walls (strict collision)
 - When fully closed: all obstacle walls are crushed and destroyed
+- **2 seconds after closing**: Tomb walls explode with particles and disappear
 - Purple stone texture with hieroglyph decorations
-- HUD shows progress percentage and time remaining
+- HUD shows direction indicator and progress percentage
 
 ### Ball Points Display
 - Points accumulated by ball shown above it
@@ -170,11 +177,12 @@ Main game logic containing:
 Game structure with:
 - Main menu overlay
 - In-game header (balance + session points)
-- Queue display for batched balls (with DOWN arrow hint)
 - Shop panel with cosmetics
 - Ad prompt and dummy ad player
 - Purchase confirmation modal
 - Toast notification container
+- **Fullscreen gameplay**: Footer controls and queue panel hidden
+- Queued ball count shown as small "×N" badge under base
 
 ### style.css
 Mobile-first responsive styling with arcade aesthetic.
@@ -213,9 +221,9 @@ Set weight to 0 to disable that color.
 - DOWN ARROW - Launch queued balls
 - D - Toggle debug panel
 
-### Buttons
-- FORFEIT - End game early (0 points penalty)
-- Settings - Toggle sound, haptics, performance mode
+### UI Elements
+- Queued ball count badge under base (shows "×N" when balls queued)
+- Settings panel for sound, haptics, performance mode
 
 ## Data Persistence (localStorage)
 Player data saved as `pinbounce_playerdata`:

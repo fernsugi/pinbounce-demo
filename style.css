@@ -115,13 +115,7 @@ html, body {
 
 /* Controls */
 #controls {
-    display: flex;
-    gap: 10px;
-    padding: 12px 15px;
-    background: rgba(0, 0, 0, 0.6);
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
+    display: none !important;
 }
 
 #spacebar-hint {
@@ -206,12 +200,12 @@ button:active {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 50;
-    backdrop-filter: blur(4px);
+    pointer-events: none;
 }
 
 #slot-overlay.hidden {
@@ -365,12 +359,12 @@ button:active {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 55;
-    backdrop-filter: blur(4px);
+    pointer-events: none;
 }
 
 #skill-wheel-overlay.hidden {
@@ -877,17 +871,7 @@ button:active {
    =========================================== */
 
 #queue-display {
-    position: absolute;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.85);
-    border: 2px solid rgba(0, 210, 211, 0.4);
-    border-radius: 12px;
-    padding: 15px 20px;
-    z-index: 30;
-    min-width: 200px;
-    text-align: center;
+    display: none !important;
 }
 
 #queue-display.hidden {
