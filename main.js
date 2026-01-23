@@ -2750,6 +2750,62 @@ class Renderer {
     drawFairies() {
         const time = Date.now();
 
+        // First pass: draw large beacon rings behind everything
+        for (const fairy of this.gameState.fairies) {
+            if (fairy.collected) continue;
+
+            const isSolid = fairy.isSolid;
+            const isWarning = fairy.isWarning;
+
+            // Pulsing beacon ring - very visible
+            const pulseScale = 1 + Math.sin(time * 0.008) * 0.3;
+            const beaconRadius = 50 * pulseScale;
+
+            this.ctx.save();
+            this.ctx.translate(fairy.x, fairy.y);
+
+            if (isSolid) {
+                // Bright golden beacon when catchable
+                this.ctx.strokeStyle = `rgba(255, 215, 0, ${0.6 + Math.sin(time * 0.01) * 0.3})`;
+                this.ctx.lineWidth = 4;
+                this.ctx.shadowColor = '#ffd700';
+                this.ctx.shadowBlur = 20;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, beaconRadius, 0, Math.PI * 2);
+                this.ctx.stroke();
+
+                // Second ring
+                this.ctx.strokeStyle = `rgba(255, 255, 100, ${0.3 + Math.sin(time * 0.015) * 0.2})`;
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, beaconRadius * 1.3, 0, Math.PI * 2);
+                this.ctx.stroke();
+            } else if (isWarning) {
+                // Flashing warning beacon
+                const flash = Math.sin(time * 0.025) > 0;
+                if (flash) {
+                    this.ctx.strokeStyle = 'rgba(255, 200, 50, 0.7)';
+                    this.ctx.lineWidth = 3;
+                    this.ctx.shadowColor = '#ffcc00';
+                    this.ctx.shadowBlur = 15;
+                    this.ctx.beginPath();
+                    this.ctx.arc(0, 0, beaconRadius * 0.8, 0, Math.PI * 2);
+                    this.ctx.stroke();
+                }
+            } else {
+                // Subtle purple beacon when ghost
+                this.ctx.strokeStyle = 'rgba(150, 100, 255, 0.2)';
+                this.ctx.lineWidth = 2;
+                this.ctx.shadowBlur = 0;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, beaconRadius * 0.7, 0, Math.PI * 2);
+                this.ctx.stroke();
+            }
+
+            this.ctx.restore();
+        }
+
+        // Second pass: draw the actual fairies
         for (const fairy of this.gameState.fairies) {
             if (fairy.collected) continue;
 
@@ -2763,10 +2819,10 @@ class Renderer {
             // Warning flash when about to become solid
             if (isWarning) {
                 const flash = Math.sin(time * 0.03) > 0;
-                this.ctx.globalAlpha = flash ? 0.9 : 0.3;
+                this.ctx.globalAlpha = flash ? 1 : 0.5;
             } else if (isGhost) {
-                // Ghost mode - translucent
-                this.ctx.globalAlpha = 0.25;
+                // Ghost mode - more visible than before
+                this.ctx.globalAlpha = 0.4;
             } else {
                 // Solid mode - fully visible
                 this.ctx.globalAlpha = 1;
@@ -2776,14 +2832,14 @@ class Renderer {
             const bob = Math.sin(time * 0.004 + fairy.phaseStart) * 4;
             this.ctx.translate(0, bob);
 
-            // Sparkle effect
-            const sparkleCount = isSolid ? 8 : 4;
+            // Sparkle effect - larger and more visible
+            const sparkleCount = isSolid ? 12 : 6;
             for (let i = 0; i < sparkleCount; i++) {
-                const angle = (time * 0.003 + i * Math.PI * 2 / sparkleCount);
-                const dist = 20 + Math.sin(time * 0.006 + i) * 5;
+                const angle = (time * 0.004 + i * Math.PI * 2 / sparkleCount);
+                const dist = 28 + Math.sin(time * 0.006 + i) * 8;
                 const sparkleX = Math.cos(angle) * dist;
                 const sparkleY = Math.sin(angle) * dist;
-                const sparkleAlpha = (isSolid ? 0.8 : 0.3) * (0.5 + Math.sin(time * 0.01 + i) * 0.5);
+                const sparkleAlpha = (isSolid ? 0.9 : 0.4) * (0.5 + Math.sin(time * 0.01 + i) * 0.5);
 
                 // Gold when solid, blue/purple when ghost
                 if (isSolid) {
@@ -2792,22 +2848,23 @@ class Renderer {
                     this.ctx.fillStyle = `rgba(150, 100, 255, ${sparkleAlpha})`;
                 }
                 this.ctx.beginPath();
-                this.ctx.arc(sparkleX, sparkleY, isSolid ? 3 : 2, 0, Math.PI * 2);
+                this.ctx.arc(sparkleX, sparkleY, isSolid ? 4 : 3, 0, Math.PI * 2);
                 this.ctx.fill();
             }
 
-            // Outer glow - different color for ghost vs solid
-            const glowRadius = fairy.radius * (isSolid ? 2.5 : 2);
+            // Outer glow - much larger
+            const glowRadius = fairy.radius * (isSolid ? 3.5 : 2.5);
             const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
             if (isSolid) {
                 // Bright gold glow when catchable
-                gradient.addColorStop(0, 'rgba(255, 230, 100, 0.9)');
-                gradient.addColorStop(0.5, 'rgba(255, 180, 50, 0.5)');
-                gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+                gradient.addColorStop(0, 'rgba(255, 240, 150, 1)');
+                gradient.addColorStop(0.3, 'rgba(255, 200, 50, 0.7)');
+                gradient.addColorStop(0.6, 'rgba(255, 150, 0, 0.3)');
+                gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
             } else {
                 // Purple/blue ghost glow
-                gradient.addColorStop(0, 'rgba(150, 100, 255, 0.4)');
-                gradient.addColorStop(0.5, 'rgba(100, 50, 200, 0.2)');
+                gradient.addColorStop(0, 'rgba(180, 140, 255, 0.6)');
+                gradient.addColorStop(0.5, 'rgba(120, 80, 220, 0.3)');
                 gradient.addColorStop(1, 'rgba(80, 40, 150, 0)');
             }
             this.ctx.fillStyle = gradient;
@@ -2815,33 +2872,38 @@ class Renderer {
             this.ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // Main body
+            // Main body - original size
             const bodyGradient = this.ctx.createRadialGradient(-3, -3, 0, 0, 0, fairy.radius);
             if (isSolid) {
                 // Bright golden when catchable
-                bodyGradient.addColorStop(0, '#ffffcc');
+                bodyGradient.addColorStop(0, '#ffffee');
                 bodyGradient.addColorStop(0.5, '#ffd700');
                 bodyGradient.addColorStop(1, '#ff8c00');
             } else {
                 // Purple/blue ghost
-                bodyGradient.addColorStop(0, '#ccccff');
-                bodyGradient.addColorStop(0.5, '#8866dd');
-                bodyGradient.addColorStop(1, '#5533aa');
+                bodyGradient.addColorStop(0, '#ddddff');
+                bodyGradient.addColorStop(0.5, '#9977ee');
+                bodyGradient.addColorStop(1, '#6644bb');
             }
             this.ctx.fillStyle = bodyGradient;
             this.ctx.beginPath();
             this.ctx.arc(0, 0, fairy.radius, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // Wings
-            this.ctx.fillStyle = isSolid ? 'rgba(255, 255, 255, 0.7)' : 'rgba(200, 180, 255, 0.4)';
+            // Bright outline for visibility
+            this.ctx.strokeStyle = isSolid ? '#ffff00' : '#aa88ff';
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+
+            // Wings - original size
+            this.ctx.fillStyle = isSolid ? 'rgba(255, 255, 255, 0.8)' : 'rgba(200, 180, 255, 0.5)';
             const wingFlap = Math.sin(time * 0.025) * 0.4;
 
             // Left wing
             this.ctx.save();
             this.ctx.translate(-fairy.radius * 0.8, -2);
             this.ctx.rotate(-0.5 + wingFlap);
-            this.ctx.scale(1.3, 0.6);
+            this.ctx.scale(1.5, 0.7);
             this.ctx.beginPath();
             this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
             this.ctx.fill();
@@ -2851,7 +2913,7 @@ class Renderer {
             this.ctx.save();
             this.ctx.translate(fairy.radius * 0.8, -2);
             this.ctx.rotate(0.5 - wingFlap);
-            this.ctx.scale(1.3, 0.6);
+            this.ctx.scale(1.5, 0.7);
             this.ctx.beginPath();
             this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
             this.ctx.fill();
