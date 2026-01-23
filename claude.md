@@ -114,6 +114,11 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Each O = 1 second of auto-fire reward
 - During auto-fire: base shoots random balls (red/yellow/blue/rainbow)
 - Rainbow balls have 10% spawn chance during auto-fire
+- **Unlock mechanic**: Need 3+ O's to spawn fairies again in current Fever Time
+  - 3+ O's: Fairies respawn immediately, can trigger jackpot again
+  - 0-2 O's: "FAIRY HUNT LOCKED" - no more fairies this Fever Time
+  - Progress bar shows O count during spin (X/3 for unlock)
+  - Resets to unlocked at start of each new game
 
 ### Ball Physics
 - Tiny random velocity nudge on wall bounce prevents infinite loops
