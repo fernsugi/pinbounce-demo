@@ -96,6 +96,25 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Basket multipliers increase: x1→x3, x3→x5
 - Cannot spin new balls during Fever Time (prevents cheating)
 
+### Fairies (Fever Time)
+- 5 fairies spawn when Fever Time begins
+- Phase system cycles between GHOST and SOLID:
+  - GHOST (4 sec): Purple/translucent, invincible - balls pass through
+  - SOLID (1.5 sec): Gold/bright, catchable - balls can hit them
+  - Warning flash 0.8 sec before becoming solid
+- Each fairy has 2 HP - requires 2 hits while solid to catch
+- Fairies are staggered so they don't all become solid at once
+- Status shows "X CATCHABLE!" when fairies are in solid phase
+- Collecting all 5 fairies triggers the Jackpot
+
+### Jackpot
+- Triggered after collecting all 5 fairies
+- Game freezes during jackpot spin (balls pause)
+- 5 slots reveal one by one, each showing O or X
+- Each O = 1 second of auto-fire reward
+- During auto-fire: base shoots random balls (red/yellow/blue/rainbow)
+- Rainbow balls have 10% spawn chance during auto-fire
+
 ### Ball Physics
 - Tiny random velocity nudge on wall bounce prevents infinite loops
 - Balls that would bounce forever eventually break pattern
