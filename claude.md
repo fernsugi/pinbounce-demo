@@ -83,7 +83,7 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 - Segments: BOMB, SPLIT, BULLDOZE, and 3 MISS slots
 - BOMB: All balls gain explosion ability (area damage on hit)
 - BULLDOZE: All balls double in size and pierce through blocks
-- SPLIT: Next shot spawns 3x the normal ball count
+- SPLIT: Next shot spawns 2x the normal ball count (1 clone per ball)
 - Random starting position each spin (prevents consecutive misses)
 - Auto-completes quickly (~450ms) - no interaction needed
 - 2-second cooldown between triggers
@@ -99,6 +99,11 @@ Pin Bounce! is a mobile-first arcade game built with vanilla JavaScript and HTML
 ### Ball Physics
 - Tiny random velocity nudge on wall bounce prevents infinite loops
 - Balls that would bounce forever eventually break pattern
+
+### Obstacle Walls
+- Unbreakable obstacles scattered in the level
+- Balls bounce off them (bulldoze ability is lost on wall hit)
+- Explosions do not damage walls
 
 ## Key Files
 

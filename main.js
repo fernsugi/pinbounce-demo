@@ -1183,6 +1183,13 @@ class GameState {
         // Pending skill (for next shot if skill wheel won with no balls)
         this.pendingSkill = null;
 
+        // Fever Time fairies and jackpot
+        this.fairies = [];           // Array of fairy objects
+        this.fairiesCollected = 0;   // Count of collected fairies
+        this.jackpotState = 'idle';  // idle, spinning, reward
+        this.jackpotResults = [];    // Array of 'O' or 'X'
+        this.jackpotRevealIndex = 0; // Current slot being revealed
+        this.jackpotRewardTimer = 0; // Seconds of auto-shooting remaining
 
         // Debug stats
         this.debugStats = {
@@ -1213,6 +1220,13 @@ class GameState {
         this.skillWheelState = 'idle';
         this.skillWheelCooldown = 0;
         this.pendingSkill = null;
+        // Reset fairies and jackpot
+        this.fairies = [];
+        this.fairiesCollected = 0;
+        this.jackpotState = 'idle';
+        this.jackpotResults = [];
+        this.jackpotRevealIndex = 0;
+        this.jackpotRewardTimer = 0;
         // Shuffle basket order
         this.basketOrder = [0, 1, 2, 3, 4];
         for (let i = this.basketOrder.length - 1; i > 0; i--) {
@@ -2638,8 +2652,12 @@ class Renderer {
 
         // Draw FEVER TIME banner when no blocks left and balls still bouncing
         if (this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0 && !this.gameState.isGameOver) {
+            this.drawFairies();
             this.drawFeverTime();
         }
+
+        // Draw jackpot overlay (on top of everything)
+        this.drawJackpot();
     }
 
     drawFeverTime() {
@@ -2693,6 +2711,287 @@ class Renderer {
         this.ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
         this.ctx.fillStyle = '#ffff00';
         this.ctx.fillText('Bounces power up balls!', 0, 22);
+
+        this.ctx.restore();
+    }
+
+    drawFairies() {
+        const time = Date.now();
+
+        for (const fairy of this.gameState.fairies) {
+            if (fairy.collected) continue;
+
+            const isGhost = fairy.isGhost;
+            const isWarning = fairy.isWarning;
+            const isSolid = fairy.isSolid;
+
+            this.ctx.save();
+            this.ctx.translate(fairy.x, fairy.y);
+
+            // Warning flash when about to become solid
+            if (isWarning) {
+                const flash = Math.sin(time * 0.03) > 0;
+                this.ctx.globalAlpha = flash ? 0.9 : 0.3;
+            } else if (isGhost) {
+                // Ghost mode - translucent
+                this.ctx.globalAlpha = 0.25;
+            } else {
+                // Solid mode - fully visible
+                this.ctx.globalAlpha = 1;
+            }
+
+            // Bobbing animation
+            const bob = Math.sin(time * 0.004 + fairy.phaseStart) * 4;
+            this.ctx.translate(0, bob);
+
+            // Sparkle effect
+            const sparkleCount = isSolid ? 8 : 4;
+            for (let i = 0; i < sparkleCount; i++) {
+                const angle = (time * 0.003 + i * Math.PI * 2 / sparkleCount);
+                const dist = 20 + Math.sin(time * 0.006 + i) * 5;
+                const sparkleX = Math.cos(angle) * dist;
+                const sparkleY = Math.sin(angle) * dist;
+                const sparkleAlpha = (isSolid ? 0.8 : 0.3) * (0.5 + Math.sin(time * 0.01 + i) * 0.5);
+
+                // Gold when solid, blue/purple when ghost
+                if (isSolid) {
+                    this.ctx.fillStyle = `rgba(255, 215, 0, ${sparkleAlpha})`;
+                } else {
+                    this.ctx.fillStyle = `rgba(150, 100, 255, ${sparkleAlpha})`;
+                }
+                this.ctx.beginPath();
+                this.ctx.arc(sparkleX, sparkleY, isSolid ? 3 : 2, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            // Outer glow - different color for ghost vs solid
+            const glowRadius = fairy.radius * (isSolid ? 2.5 : 2);
+            const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
+            if (isSolid) {
+                // Bright gold glow when catchable
+                gradient.addColorStop(0, 'rgba(255, 230, 100, 0.9)');
+                gradient.addColorStop(0.5, 'rgba(255, 180, 50, 0.5)');
+                gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
+            } else {
+                // Purple/blue ghost glow
+                gradient.addColorStop(0, 'rgba(150, 100, 255, 0.4)');
+                gradient.addColorStop(0.5, 'rgba(100, 50, 200, 0.2)');
+                gradient.addColorStop(1, 'rgba(80, 40, 150, 0)');
+            }
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Main body
+            const bodyGradient = this.ctx.createRadialGradient(-3, -3, 0, 0, 0, fairy.radius);
+            if (isSolid) {
+                // Bright golden when catchable
+                bodyGradient.addColorStop(0, '#ffffcc');
+                bodyGradient.addColorStop(0.5, '#ffd700');
+                bodyGradient.addColorStop(1, '#ff8c00');
+            } else {
+                // Purple/blue ghost
+                bodyGradient.addColorStop(0, '#ccccff');
+                bodyGradient.addColorStop(0.5, '#8866dd');
+                bodyGradient.addColorStop(1, '#5533aa');
+            }
+            this.ctx.fillStyle = bodyGradient;
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, fairy.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            // Wings
+            this.ctx.fillStyle = isSolid ? 'rgba(255, 255, 255, 0.7)' : 'rgba(200, 180, 255, 0.4)';
+            const wingFlap = Math.sin(time * 0.025) * 0.4;
+
+            // Left wing
+            this.ctx.save();
+            this.ctx.translate(-fairy.radius * 0.8, -2);
+            this.ctx.rotate(-0.5 + wingFlap);
+            this.ctx.scale(1.3, 0.6);
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.restore();
+
+            // Right wing
+            this.ctx.save();
+            this.ctx.translate(fairy.radius * 0.8, -2);
+            this.ctx.rotate(0.5 - wingFlap);
+            this.ctx.scale(1.3, 0.6);
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.restore();
+
+            // HP indicator (show dots above fairy)
+            if (fairy.hp !== undefined) {
+                this.ctx.globalAlpha = 1;
+                for (let h = 0; h < fairy.hp; h++) {
+                    this.ctx.fillStyle = isSolid ? '#ff4444' : '#aa6666';
+                    this.ctx.beginPath();
+                    this.ctx.arc(-5 + h * 10, -fairy.radius - 8, 4, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+
+            // "CATCH ME!" indicator when solid
+            if (isSolid) {
+                this.ctx.globalAlpha = 0.8 + Math.sin(time * 0.01) * 0.2;
+                this.ctx.font = 'bold 10px "Segoe UI", system-ui, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillStyle = '#ffff00';
+                this.ctx.fillText('!', 0, -fairy.radius - 18);
+            }
+
+            this.ctx.restore();
+        }
+
+        // Draw status text
+        const gs = this.gameState;
+        if (gs.fairies.length > 0 || gs.fairiesCollected > 0) {
+            this.ctx.save();
+            this.ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillStyle = '#ffd700';
+            this.ctx.shadowColor = '#ff8c00';
+            this.ctx.shadowBlur = 8;
+
+            // Count solid fairies
+            const solidCount = gs.fairies.filter(f => f.isSolid && !f.collected).length;
+            let statusText = `FAIRIES: ${gs.fairiesCollected}/5`;
+            if (solidCount > 0) {
+                statusText += ` (${solidCount} CATCHABLE!)`;
+            }
+            this.ctx.fillText(statusText, this.canvas.width / 2, 80);
+            this.ctx.restore();
+        }
+    }
+
+    drawJackpot() {
+        const gs = this.gameState;
+        if (gs.jackpotState === 'idle') return;
+
+        const cx = this.canvas.width / 2;
+        const cy = this.canvas.height / 2;
+        const time = Date.now();
+
+        // During reward phase, just show a small HUD so player can see auto-fire
+        if (gs.jackpotState === 'reward') {
+            this.ctx.save();
+            this.ctx.font = 'bold 24px "Segoe UI", system-ui, sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillStyle = '#00ff88';
+            this.ctx.shadowColor = '#00ff88';
+            this.ctx.shadowBlur = 15;
+            this.ctx.fillText(`AUTO-FIRE: ${Math.ceil(gs.jackpotRewardTimer)}s`, cx, 120);
+            this.ctx.restore();
+            return;
+        }
+
+        // Darkened background overlay (only during spinning)
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Jackpot container
+        const containerWidth = 300;
+        const containerHeight = 180;
+
+        this.ctx.save();
+        this.ctx.translate(cx, cy);
+
+        // Pulsing background
+        const pulse = 1 + Math.sin(time * 0.005) * 0.02;
+        this.ctx.scale(pulse, pulse);
+
+        // Container background
+        const bgGradient = this.ctx.createLinearGradient(0, -containerHeight/2, 0, containerHeight/2);
+        bgGradient.addColorStop(0, '#2d1f5e');
+        bgGradient.addColorStop(0.5, '#1a1040');
+        bgGradient.addColorStop(1, '#0d0820');
+        this.ctx.fillStyle = bgGradient;
+        this.ctx.beginPath();
+        this.roundRect(-containerWidth/2, -containerHeight/2, containerWidth, containerHeight, 15);
+        this.ctx.fill();
+
+        // Border glow
+        this.ctx.strokeStyle = '#ffd700';
+        this.ctx.lineWidth = 3;
+        this.ctx.shadowColor = '#ffd700';
+        this.ctx.shadowBlur = 15;
+        this.ctx.beginPath();
+        this.roundRect(-containerWidth/2, -containerHeight/2, containerWidth, containerHeight, 15);
+        this.ctx.stroke();
+
+        // Title
+        this.ctx.shadowBlur = 10;
+        this.ctx.font = 'bold 28px "Segoe UI", system-ui, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = '#ffd700';
+        this.ctx.fillText('JACKPOT!', 0, -50);
+
+        // Draw 5 slots
+        const slotSize = 45;
+        const slotGap = 10;
+        const totalWidth = 5 * slotSize + 4 * slotGap;
+        const startX = -totalWidth / 2 + slotSize / 2;
+
+        for (let i = 0; i < 5; i++) {
+            const slotX = startX + i * (slotSize + slotGap);
+            const slotY = 10;
+
+            // Slot background
+            this.ctx.fillStyle = '#0a0515';
+            this.ctx.beginPath();
+            this.roundRect(slotX - slotSize/2, slotY - slotSize/2, slotSize, slotSize, 8);
+            this.ctx.fill();
+
+            // Slot border
+            this.ctx.strokeStyle = i < gs.jackpotRevealIndex ? '#ffd700' : '#444';
+            this.ctx.lineWidth = 2;
+            this.ctx.shadowBlur = i < gs.jackpotRevealIndex ? 8 : 0;
+            this.ctx.beginPath();
+            this.roundRect(slotX - slotSize/2, slotY - slotSize/2, slotSize, slotSize, 8);
+            this.ctx.stroke();
+
+            // Slot content
+            if (i < gs.jackpotRevealIndex) {
+                // Revealed
+                const result = gs.jackpotResults[i];
+                this.ctx.font = 'bold 30px "Segoe UI", system-ui, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+
+                if (result === 'O') {
+                    this.ctx.fillStyle = '#00ff88';
+                    this.ctx.shadowColor = '#00ff88';
+                    this.ctx.shadowBlur = 10;
+                } else {
+                    this.ctx.fillStyle = '#ff4444';
+                    this.ctx.shadowColor = '#ff4444';
+                    this.ctx.shadowBlur = 5;
+                }
+                this.ctx.fillText(result, slotX, slotY);
+            } else if (i === gs.jackpotRevealIndex && gs.jackpotState === 'spinning') {
+                // Currently spinning
+                const spinChar = ['O', 'X', 'O', 'X'][Math.floor(time / 80) % 4];
+                this.ctx.font = 'bold 30px "Segoe UI", system-ui, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillStyle = '#888';
+                this.ctx.shadowBlur = 0;
+                this.ctx.fillText(spinChar, slotX, slotY);
+            } else {
+                // Not yet revealed
+                this.ctx.font = 'bold 30px "Segoe UI", system-ui, sans-serif';
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                this.ctx.fillStyle = '#333';
+                this.ctx.shadowBlur = 0;
+                this.ctx.fillText('?', slotX, slotY);
+            }
+        }
 
         this.ctx.restore();
     }
@@ -3153,8 +3452,8 @@ class Game {
         // Flatten queued balls into individual balls
         const allBalls = [];
         for (const queued of this.queuedBalls) {
-            // Split skill = 3x balls
-            const count = pendingSkill === 'split' ? queued.count * 3 : queued.count;
+            // Split skill = 2x balls (1 clone per ball)
+            const count = pendingSkill === 'split' ? queued.count * 2 : queued.count;
             for (let i = 0; i < count; i++) {
                 allBalls.push(queued.color);
             }
@@ -3246,8 +3545,8 @@ class Game {
         const pendingSkill = this.gameState.pendingSkill;
         this.gameState.pendingSkill = null;  // Clear it now
 
-        // Split pending skill = spawn 3x the balls
-        const actualCount = pendingSkill === 'split' ? count * 3 : count;
+        // Split pending skill = spawn 2x the balls (1 clone per ball)
+        const actualCount = pendingSkill === 'split' ? count * 2 : count;
 
         // Delay between ball spawns (ms)
         const spawnDelay = 150;
@@ -3417,22 +3716,17 @@ class Game {
                         }
                     }
 
-                    // Bulldoze: break wall once before losing ability
+                    // Bulldoze: lose ability on wall hit (walls are unbreakable)
                     if (ball.hasBulldoze) {
-                        const destroyed = wall.takeDamage();
-                        if (destroyed) {
-                            this.particles.emit(wall.centerX, wall.centerY, '#5a5a7a', 15);
-                            this.audio.blockBreak();
-                        }
                         ball.hasBulldoze = false;
                         ball.baseRadius = ball.getRadiusByType(ball.type);  // Shrink back
+                        this.particles.emit(ball.x, ball.y, '#5a5a7a', 8);
                     }
                 }
             }
         }
 
-        // Remove destroyed walls
-        this.gameState.walls = this.gameState.walls.filter(w => w.hp > 0);
+        // Walls are unbreakable - no need to filter destroyed walls
     }
 
     processBallBlockCollisions() {
@@ -3544,24 +3838,7 @@ class Game {
             }
         }
 
-        // Damage walls in radius (1 damage per explosion)
-        for (const wall of this.gameState.walls) {
-            if (wall.hp <= 0) continue;
-
-            const dx = wall.centerX - x;
-            const dy = wall.centerY - y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance <= aoeRadius) {
-                const destroyed = wall.takeDamage();
-                if (destroyed) {
-                    this.particles.emit(wall.centerX, wall.centerY, '#5a5a7a', 15);
-                }
-            }
-        }
-
-        // Remove destroyed walls
-        this.gameState.walls = this.gameState.walls.filter(w => w.hp > 0);
+        // Walls are unbreakable - explosions don't damage them
     }
 
     spawnDamageText(x, y, damage) {
@@ -3572,6 +3849,258 @@ class Game {
             life: 600,  // ms
             maxLife: 600
         });
+    }
+
+    // ==========================================
+    // FEVER TIME FAIRIES & JACKPOT
+    // ==========================================
+
+    updateFairies() {
+        const gs = this.gameState;
+
+        // Don't update if jackpot is active
+        if (gs.jackpotState !== 'idle') return;
+
+        // Fairy config - PHASE SYSTEM makes them hard to catch
+        const FAIRY_SPEED = 2.5;           // Slow, visible movement
+        const GHOST_DURATION = 4000;       // 4 seconds ghost (invincible)
+        const SOLID_DURATION = 1500;       // 1.5 seconds solid (catchable)
+        const WARNING_TIME = 800;          // Flash warning before becoming solid
+        const CYCLE_TIME = GHOST_DURATION + SOLID_DURATION;
+
+        // Spawn 5 fairies if none exist
+        if (gs.fairies.length === 0 && gs.fairiesCollected < 5) {
+            const now = Date.now();
+            for (let i = 0; i < 5; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                gs.fairies.push({
+                    x: Math.random() * (this.canvas.width - 100) + 50,
+                    y: Math.random() * (this.canvas.height - 250) + 120,
+                    vx: Math.cos(angle) * FAIRY_SPEED,
+                    vy: Math.sin(angle) * FAIRY_SPEED,
+                    radius: 15,
+                    collected: false,
+                    // Phase system - each fairy has offset so they don't all sync
+                    phaseStart: now - (i * CYCLE_TIME / 5),  // Stagger phases
+                    hp: 2  // Need 2 hits to catch!
+                });
+            }
+        }
+
+        const now = Date.now();
+
+        // Update fairy positions
+        for (const fairy of gs.fairies) {
+            if (fairy.collected) continue;
+
+            // Calculate phase (ghost or solid)
+            const cycleTime = (now - fairy.phaseStart) % CYCLE_TIME;
+            const isGhost = cycleTime < GHOST_DURATION;
+            const isWarning = isGhost && cycleTime > (GHOST_DURATION - WARNING_TIME);
+            const isSolid = !isGhost;
+
+            fairy.isGhost = isGhost;
+            fairy.isWarning = isWarning;
+            fairy.isSolid = isSolid;
+
+            // Simple gentle movement - no crazy dodging
+            fairy.x += fairy.vx;
+            fairy.y += fairy.vy;
+
+            // Gentle floating motion
+            fairy.x += Math.sin(now * 0.002 + fairy.phaseStart) * 0.3;
+            fairy.y += Math.cos(now * 0.0015 + fairy.phaseStart) * 0.3;
+
+            // Bounce off walls smoothly
+            if (fairy.x < 40 || fairy.x > this.canvas.width - 40) {
+                fairy.vx *= -1;
+                fairy.x = Math.max(40, Math.min(this.canvas.width - 40, fairy.x));
+            }
+            if (fairy.y < 100 || fairy.y > this.canvas.height - 100) {
+                fairy.vy *= -1;
+                fairy.y = Math.max(100, Math.min(this.canvas.height - 100, fairy.y));
+            }
+
+            // Occasionally change direction
+            if (Math.random() < 0.005) {
+                const angle = Math.random() * Math.PI * 2;
+                fairy.vx = Math.cos(angle) * FAIRY_SPEED;
+                fairy.vy = Math.sin(angle) * FAIRY_SPEED;
+            }
+
+            // Only check collision when SOLID (not ghost)
+            if (isSolid) {
+                for (const ball of gs.balls) {
+                    const dx = ball.x - fairy.x;
+                    const dy = ball.y - fairy.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < ball.radius + fairy.radius) {
+                        fairy.hp--;
+
+                        // Knockback effect
+                        fairy.vx += dx / dist * 3;
+                        fairy.vy += dy / dist * 3;
+
+                        if (fairy.hp <= 0) {
+                            // Caught!
+                            fairy.collected = true;
+                            gs.fairiesCollected++;
+
+                            // Big effects
+                            this.particles.emit(fairy.x, fairy.y, '#ffff00', 30);
+                            this.particles.emit(fairy.x, fairy.y, '#ff69b4', 25);
+                            this.audio.blockBreak();
+                            this.cameraShake.trigger(10, 250);
+
+                            gs.damageTexts.push({
+                                x: fairy.x,
+                                y: fairy.y,
+                                damage: `FAIRY ${gs.fairiesCollected}/5`,
+                                life: 1000,
+                                maxLife: 1000,
+                                isPoints: true
+                            });
+
+                            if (gs.fairiesCollected >= 5) {
+                                this.startJackpot();
+                            }
+                        } else {
+                            // Hit but not caught - show HP
+                            this.particles.emit(fairy.x, fairy.y, '#ff6666', 10);
+                            this.audio.wrongColorBounce();
+
+                            gs.damageTexts.push({
+                                x: fairy.x,
+                                y: fairy.y - 20,
+                                damage: `${fairy.hp} HP`,
+                                life: 600,
+                                maxLife: 600,
+                                isPoints: false
+                            });
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Remove collected fairies
+        gs.fairies = gs.fairies.filter(f => !f.collected);
+    }
+
+    startJackpot() {
+        const gs = this.gameState;
+        gs.jackpotState = 'spinning';
+        gs.jackpotResults = [];
+        gs.jackpotRevealIndex = 0;
+
+        // Generate 5 random O/X results
+        for (let i = 0; i < 5; i++) {
+            gs.jackpotResults.push(Math.random() < 0.5 ? 'O' : 'X');
+        }
+
+        // Flash effect
+        this.triggerFlash('#ffd700', 0.5);
+        this.cameraShake.trigger(10, 300);
+
+        // Start revealing slots one by one
+        this.revealNextJackpotSlot();
+    }
+
+    revealNextJackpotSlot() {
+        const gs = this.gameState;
+
+        if (gs.jackpotRevealIndex >= 5) {
+            // All revealed - start reward phase
+            setTimeout(() => {
+                this.startJackpotReward();
+            }, 500);
+            return;
+        }
+
+        // Reveal current slot after delay
+        setTimeout(() => {
+            gs.jackpotRevealIndex++;
+            this.audio.blockBreak();
+
+            // Continue to next slot
+            setTimeout(() => {
+                this.revealNextJackpotSlot();
+            }, 400);
+        }, 300);
+    }
+
+    startJackpotReward() {
+        const gs = this.gameState;
+
+        // Count O's - each O = 1 second of auto-shooting
+        const oCount = gs.jackpotResults.filter(r => r === 'O').length;
+
+        if (oCount > 0) {
+            gs.jackpotState = 'reward';
+            gs.jackpotRewardTimer = oCount;  // seconds
+
+            // Show reward text
+            gs.damageTexts.push({
+                x: this.canvas.width / 2,
+                y: this.canvas.height / 2,
+                damage: `${oCount} SECONDS!`,
+                life: 1500,
+                maxLife: 1500,
+                isPoints: true
+            });
+        } else {
+            // No O's - end jackpot
+            this.endJackpot();
+        }
+    }
+
+    updateJackpotReward(dt) {
+        const gs = this.gameState;
+
+        if (gs.jackpotState !== 'reward') return;
+
+        // Decrease timer
+        gs.jackpotRewardTimer -= dt / 1000;
+
+        // Spawn random balls from base
+        if (Math.random() < 0.15) {  // ~9 balls per second
+            const colors = ['red', 'yellow', 'blue'];
+            const isRainbow = Math.random() < 0.1;  // 10% chance rainbow
+            const color = isRainbow ? 'rainbow' : colors[Math.floor(Math.random() * colors.length)];
+
+            const ball = new Ball(
+                gs.baseX,
+                CONFIG.BASE_Y + 20,
+                color,
+                isRainbow ? 'rainbow' : 'normal'
+            );
+
+            // Random spread angle
+            const angle = (Math.random() - 0.5) * 0.8 + Math.PI / 2;
+            const speed = CONFIG.BALL_SPEED * CONFIG.BALL_BOOST_MULTIPLIER;
+            ball.vx = Math.cos(angle) * speed;
+            ball.vy = Math.sin(angle) * speed;
+            ball.boosted = true;
+
+            gs.balls.push(ball);
+            this.particles.emit(ball.x, ball.y, ball.getDisplayColor() || '#ffffff', 5);
+        }
+
+        // End reward when timer runs out
+        if (gs.jackpotRewardTimer <= 0) {
+            this.endJackpot();
+        }
+    }
+
+    endJackpot() {
+        const gs = this.gameState;
+        gs.jackpotState = 'idle';
+        gs.jackpotResults = [];
+        gs.jackpotRevealIndex = 0;
+        gs.jackpotRewardTimer = 0;
+        gs.fairiesCollected = 0;  // Reset for potential next fever time
     }
 
     applySkillToAllBalls(skill) {
@@ -3594,26 +4123,18 @@ class Game {
                 ball.hasBulldoze = true;
                 ball.baseRadius *= 2;  // Double size like old blue ball
             } else if (skill === 'split') {
-                // Split each ball into 3 - spawn 2 more balls at each ball's position
-                const angle1 = Math.atan2(ball.vy, ball.vx) - 0.5;
-                const angle2 = Math.atan2(ball.vy, ball.vx) + 0.5;
+                // Split each ball into 2 - spawn 1 clone at each ball's position
+                const angle = Math.atan2(ball.vy, ball.vx) + 0.5;  // Offset angle
                 const speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 
-                const ball1 = new Ball(ball.x, ball.y, ball.color, ball.type, angle1);
-                ball1.vx = Math.cos(angle1) * speed;
-                ball1.vy = Math.sin(angle1) * speed;
-                ball1.points = 0;  // Clones don't inherit points
-                ball1.boosted = ball.boosted;
-                ball1.normalSpeed = ball.normalSpeed;
+                const clone = new Ball(ball.x, ball.y, ball.color, ball.type, angle);
+                clone.vx = Math.cos(angle) * speed;
+                clone.vy = Math.sin(angle) * speed;
+                clone.points = 0;  // Clones don't inherit points
+                clone.boosted = ball.boosted;
+                clone.normalSpeed = ball.normalSpeed;
 
-                const ball2 = new Ball(ball.x, ball.y, ball.color, ball.type, angle2);
-                ball2.vx = Math.cos(angle2) * speed;
-                ball2.vy = Math.sin(angle2) * speed;
-                ball2.points = 0;  // Clones don't inherit points
-                ball2.boosted = ball.boosted;
-                ball2.normalSpeed = ball.normalSpeed;
-
-                newBalls.push(ball1, ball2);
+                newBalls.push(clone);
 
                 // Effects for split
                 this.particles.emit(ball.x, ball.y, ball.getDisplayColor() || '#ffc312', 10);
@@ -3698,6 +4219,12 @@ class Game {
             return;
         }
 
+        // Freeze game during jackpot spinning (balls stop, only jackpot animates)
+        if (this.gameState.jackpotState === 'spinning') {
+            this.updateUI();
+            return;
+        }
+
         // Pause while skill wheel is active (but keep balls visible)
         if (this.gameState.skillWheelState !== 'idle') {
             this.updateUI();
@@ -3761,7 +4288,18 @@ class Game {
                     ball.points += 1;
                 }
             }
+            // Update fairies and jackpot during Fever Time
+            this.updateFairies();
+        } else {
+            // Reset fairies when not in Fever Time
+            if (this.gameState.fairies.length > 0) {
+                this.gameState.fairies = [];
+                this.gameState.fairiesCollected = 0;
+            }
         }
+
+        // Update jackpot reward (auto-shooting)
+        this.updateJackpotReward(dt);
 
         // Update particles
         this.particles.update(dt);
