@@ -1183,7 +1183,11 @@ class GameState {
         // Pending skill (for next shot if skill wheel won with no balls)
         this.pendingSkill = null;
 
-        // Fever Time fairies and jackpot
+        // Fever Time mode (50/50 chance: fairy hunt or tomb wall)
+        this.feverMode = null;       // 'fairy' or 'tomb' - decided when fever starts
+        this.feverModeDecided = false;  // Has mode been decided this fever?
+
+        // Fairy Hunt state
         this.fairies = [];           // Array of fairy objects
         this.fairiesCollected = 0;   // Count of collected fairies
         this.fairyHuntAvailable = true;  // Can fairies spawn? Need 3+ O's to unlock again
@@ -1192,6 +1196,13 @@ class GameState {
         this.jackpotRevealIndex = 0; // Current slot being revealed
         this.jackpotRewardTimer = 0; // Seconds of auto-shooting remaining
         this.lastJackpotOCount = 0;  // Track O's for unlock display
+
+        // Tomb Wall state
+        this.tombWallActive = false;
+        this.tombWallProgress = 0;   // 0 to 1 (0 = walls at edges, 1 = walls at center)
+        this.tombWallDuration = 10;  // Seconds for walls to reach center (adjustable)
+        this.tombWallGap = 40;       // Gap size in pixels when fully closed
+        this.tombWallCrushed = false; // Have obstacle walls been crushed?
 
         // Debug stats
         this.debugStats = {
@@ -1222,6 +1233,9 @@ class GameState {
         this.skillWheelState = 'idle';
         this.skillWheelCooldown = 0;
         this.pendingSkill = null;
+        // Reset fever mode
+        this.feverMode = null;
+        this.feverModeDecided = false;
         // Reset fairies and jackpot
         this.fairies = [];
         this.fairiesCollected = 0;
@@ -1231,6 +1245,10 @@ class GameState {
         this.jackpotRevealIndex = 0;
         this.jackpotRewardTimer = 0;
         this.lastJackpotOCount = 0;
+        // Reset tomb wall
+        this.tombWallActive = false;
+        this.tombWallProgress = 0;
+        this.tombWallCrushed = false;
         // Shuffle basket order
         this.basketOrder = [0, 1, 2, 3, 4];
         for (let i = this.basketOrder.length - 1; i > 0; i--) {
@@ -2366,24 +2384,29 @@ class Renderer {
         // Apply cosmetic skin effects
         this.drawBallSkin(ball);
 
-        // Show accumulated points above ball (grows with bigger numbers)
+        // Show accumulated points above ball (grows bigger with higher amounts)
         if (ball.points > 0) {
-            // Scale font size based on points (12px base, grows up to ~24px)
-            const baseSize = 12;
-            const scale = Math.min(2, 1 + Math.log10(ball.points + 1) * 0.4);
+            // Scale font size based on points (14px base, grows up to ~42px for big numbers)
+            const baseSize = 14;
+            const scale = Math.min(3, 1 + Math.log10(ball.points + 1) * 0.7);
             const fontSize = Math.round(baseSize * scale);
-            const textY = ball.y - ball.radius - 8 - fontSize / 2;
+            const textY = ball.y - ball.radius - 10 - fontSize / 2;
 
             this.ctx.font = `bold ${fontSize}px "Segoe UI", system-ui, sans-serif`;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            // Dark outline
+            // Dark outline (thicker for bigger text)
             this.ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-            this.ctx.lineWidth = 3;
+            this.ctx.lineWidth = Math.max(3, fontSize / 6);
             this.ctx.strokeText(ball.points, ball.x, textY);
-            // White text
-            this.ctx.fillStyle = '#ffffff';
+            // White text with glow for big numbers
+            if (ball.points >= 50) {
+                this.ctx.shadowColor = '#ffff00';
+                this.ctx.shadowBlur = 8;
+            }
+            this.ctx.fillStyle = ball.points >= 100 ? '#ffff00' : '#ffffff';
             this.ctx.fillText(ball.points, ball.x, textY);
+            this.ctx.shadowBlur = 0;
         }
     }
 
@@ -2656,7 +2679,12 @@ class Renderer {
 
         // Draw FEVER TIME banner when no blocks left and balls still bouncing
         if (this.gameState.remainingBlocks === 0 && this.gameState.balls.length > 0 && !this.gameState.isGameOver) {
-            this.drawFairies();
+            // Draw based on fever mode
+            if (this.gameState.feverMode === 'fairy') {
+                this.drawFairies();
+            } else if (this.gameState.feverMode === 'tomb') {
+                this.drawTombWall();
+            }
             this.drawFeverTime();
         }
 
@@ -2887,6 +2915,88 @@ class Renderer {
             this.ctx.fillText('(Need 3+ O\'s in jackpot to unlock)', this.canvas.width / 2, 98);
             this.ctx.restore();
         }
+    }
+
+    drawTombWall() {
+        const gs = this.gameState;
+        if (!gs.tombWallActive) return;
+
+        const time = Date.now();
+
+        // Get wall positions from state
+        const leftX = gs.tombWallLeftX || 0;
+        const rightX = gs.tombWallRightX || this.canvas.width - 30;
+        const wallWidth = gs.tombWallWidth || 30;
+        const wallHeight = gs.tombWallHeight || this.canvas.height - 40;
+        const topY = 60;
+
+        // Draw left wall
+        this.ctx.save();
+
+        // Stone texture gradient for left wall
+        const leftGradient = this.ctx.createLinearGradient(leftX, 0, leftX + wallWidth, 0);
+        leftGradient.addColorStop(0, '#2a2a3a');
+        leftGradient.addColorStop(0.3, '#4a4a5a');
+        leftGradient.addColorStop(0.7, '#3a3a4a');
+        leftGradient.addColorStop(1, '#5a5a6a');
+        this.ctx.fillStyle = leftGradient;
+        this.ctx.fillRect(leftX, topY, wallWidth, wallHeight);
+
+        // Left wall border glow
+        this.ctx.strokeStyle = '#8866aa';
+        this.ctx.lineWidth = 3;
+        this.ctx.shadowColor = '#aa88ff';
+        this.ctx.shadowBlur = 10 + Math.sin(time * 0.005) * 5;
+        this.ctx.strokeRect(leftX, topY, wallWidth, wallHeight);
+
+        // Draw right wall
+        const rightGradient = this.ctx.createLinearGradient(rightX, 0, rightX + wallWidth, 0);
+        rightGradient.addColorStop(0, '#5a5a6a');
+        rightGradient.addColorStop(0.3, '#3a3a4a');
+        rightGradient.addColorStop(0.7, '#4a4a5a');
+        rightGradient.addColorStop(1, '#2a2a3a');
+        this.ctx.fillStyle = rightGradient;
+        this.ctx.fillRect(rightX, topY, wallWidth, wallHeight);
+
+        // Right wall border glow
+        this.ctx.strokeRect(rightX, topY, wallWidth, wallHeight);
+
+        // Draw hieroglyph-like decorations on walls
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = `rgba(136, 102, 170, ${0.3 + Math.sin(time * 0.003) * 0.2})`;
+        this.ctx.font = '16px serif';
+
+        const symbols = ['☥', '𓂀', '◇', '△', '○', '▽'];
+        const symbolSpacing = 50;
+        for (let y = topY + 30; y < topY + wallHeight - 30; y += symbolSpacing) {
+            const symbolIdx = Math.floor((y - topY) / symbolSpacing) % symbols.length;
+            // Left wall symbols
+            this.ctx.fillText(symbols[symbolIdx], leftX + wallWidth / 2 - 5, y);
+            // Right wall symbols
+            this.ctx.fillText(symbols[(symbolIdx + 3) % symbols.length], rightX + wallWidth / 2 - 5, y);
+        }
+
+        this.ctx.restore();
+
+        // Draw progress indicator and mode label
+        this.ctx.save();
+        this.ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillStyle = '#aa88ff';
+        this.ctx.shadowColor = '#8866aa';
+        this.ctx.shadowBlur = 8;
+
+        const progressPercent = Math.floor(gs.tombWallProgress * 100);
+        this.ctx.fillText(`TOMB WALL: ${progressPercent}%`, this.canvas.width / 2, 80);
+
+        // Time remaining
+        const timeRemaining = Math.ceil(gs.tombWallDuration * (1 - gs.tombWallProgress));
+        this.ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+        this.ctx.fillStyle = '#888';
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillText(`${timeRemaining}s remaining`, this.canvas.width / 2, 98);
+
+        this.ctx.restore();
     }
 
     drawJackpot() {
@@ -4215,6 +4325,100 @@ class Game {
         gs.fairiesCollected = 0;  // Reset for potential next fever time
     }
 
+    // ==========================================
+    // TOMB WALL MODE
+    // ==========================================
+
+    updateTombWall(dt) {
+        const gs = this.gameState;
+        if (!gs.tombWallActive) return;
+
+        // Progress the walls toward center
+        const progressPerSecond = 1 / gs.tombWallDuration;
+        gs.tombWallProgress = Math.min(1, gs.tombWallProgress + progressPerSecond * (dt / 1000));
+
+        // Calculate wall positions
+        const canvasWidth = this.canvas.width;
+        const canvasHeight = this.canvas.height;
+        const wallWidth = 30;
+        const centerX = canvasWidth / 2;
+        const finalGap = gs.tombWallGap;
+
+        // Walls start at edges, move to center leaving a gap
+        // Left wall: starts at 0, ends at (centerX - finalGap/2 - wallWidth)
+        // Right wall: starts at (canvasWidth - wallWidth), ends at (centerX + finalGap/2)
+        const leftWallStartX = 0;
+        const leftWallEndX = centerX - finalGap / 2 - wallWidth;
+        const rightWallStartX = canvasWidth - wallWidth;
+        const rightWallEndX = centerX + finalGap / 2;
+
+        const leftWallX = leftWallStartX + (leftWallEndX - leftWallStartX) * gs.tombWallProgress;
+        const rightWallX = rightWallStartX + (rightWallEndX - rightWallStartX) * gs.tombWallProgress;
+
+        // Store for collision detection and rendering
+        gs.tombWallLeftX = leftWallX;
+        gs.tombWallRightX = rightWallX;
+        gs.tombWallWidth = wallWidth;
+        gs.tombWallHeight = canvasHeight - 40;  // Leave space for baskets
+
+        // When tomb walls fully close, crush all obstacle walls
+        if (gs.tombWallProgress >= 1 && !gs.tombWallCrushed) {
+            gs.tombWallCrushed = true;
+
+            // Emit particles for each destroyed wall
+            for (const wall of gs.walls) {
+                this.particles.emit(wall.x, wall.y, '#8866aa', 15);
+                this.particles.emit(wall.x, wall.y, '#aa88ff', 10);
+            }
+
+            // Delete all obstacle walls
+            gs.walls = [];
+
+            // Visual feedback
+            this.cameraShake.trigger(15, 400);
+            this.triggerFlash('#aa88ff', 0.4);
+            this.audio.blockBreak();
+
+            // Show message
+            gs.damageTexts.push({
+                x: canvasWidth / 2,
+                y: canvasHeight / 2,
+                damage: 'WALLS CRUSHED!',
+                life: 1500,
+                maxLife: 1500,
+                isPoints: true
+            });
+        }
+
+        // Check ball collisions with tomb walls
+        for (const ball of gs.balls) {
+            // Left wall collision (right edge of wall)
+            const leftWallRight = leftWallX + wallWidth;
+            if (ball.x - ball.radius < leftWallRight && ball.x + ball.radius > leftWallX) {
+                if (ball.y > 60 && ball.y < canvasHeight - 40) {
+                    // Push ball out to the right
+                    ball.x = leftWallRight + ball.radius;
+                    if (ball.vx < 0) {
+                        ball.vx = -ball.vx * 0.9;  // Bounce with slight damping
+                        ball.points += 1;  // Bonus point for tomb wall hit
+                    }
+                }
+            }
+
+            // Right wall collision (left edge of wall)
+            if (ball.x + ball.radius > rightWallX && ball.x - ball.radius < rightWallX + wallWidth) {
+                if (ball.y > 60 && ball.y < canvasHeight - 40) {
+                    // Push ball out to the left
+                    ball.x = rightWallX - ball.radius;
+                    if (ball.vx > 0) {
+                        ball.vx = -ball.vx * 0.9;  // Bounce with slight damping
+                        ball.points += 1;  // Bonus point for tomb wall hit
+                    }
+                }
+            }
+        }
+    }
+
     applySkillToAllBalls(skill) {
         if (!skill) return;  // MISS - no skill applied
 
@@ -4400,13 +4604,41 @@ class Game {
                     ball.points += 1;
                 }
             }
-            // Update fairies and jackpot during Fever Time
-            this.updateFairies();
+
+            // Decide fever mode (50/50) when fever starts
+            if (!this.gameState.feverModeDecided) {
+                this.gameState.feverModeDecided = true;
+                this.gameState.feverMode = Math.random() < 0.5 ? 'fairy' : 'tomb';
+
+                // Initialize the chosen mode
+                if (this.gameState.feverMode === 'tomb') {
+                    this.gameState.tombWallActive = true;
+                    this.gameState.tombWallProgress = 0;
+                }
+            }
+
+            // Update based on fever mode
+            if (this.gameState.feverMode === 'fairy') {
+                this.updateFairies();
+            } else if (this.gameState.feverMode === 'tomb') {
+                this.updateTombWall(dt);
+            }
         } else {
-            // Reset fairies when not in Fever Time
+            // Reset when not in Fever Time
+            if (this.gameState.feverModeDecided) {
+                this.gameState.feverModeDecided = false;
+                this.gameState.feverMode = null;
+            }
+            // Reset fairies
             if (this.gameState.fairies.length > 0) {
                 this.gameState.fairies = [];
                 this.gameState.fairiesCollected = 0;
+            }
+            // Reset tomb wall
+            if (this.gameState.tombWallActive) {
+                this.gameState.tombWallActive = false;
+                this.gameState.tombWallProgress = 0;
+                this.gameState.tombWallCrushed = false;
             }
         }
 
